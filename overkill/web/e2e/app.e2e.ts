@@ -43,7 +43,8 @@ test('setup form: note first, made-up 4-word vault name, password-manager fields
 	const user = form.getByLabel('Vault name');
 	await expect(user).toHaveAttribute('name', 'username');
 	await expect(user).toHaveAttribute('autocomplete', 'username');
-	await expect(user).toHaveAttribute('readonly', '');
+	// the name is a plain editable field; the passphrase is read-only until "change passphrase"
+	await expect(user).not.toHaveAttribute('readonly', '');
 	const words = (await user.inputValue()).split('-');
 	expect(words).toHaveLength(4);
 	for (const w of words) expect(WORDLIST.has(w), `${w} is an EFF list word`).toBe(true);
@@ -55,8 +56,11 @@ test('setup form: note first, made-up 4-word vault name, password-manager fields
 	const before = await user.inputValue();
 	await form.getByRole('button', { name: 'Roll new words' }).click();
 	expect(await user.inputValue()).not.toBe(before);
-	await form.getByRole('button', { name: 'change', exact: true }).click();
-	await expect(user).not.toHaveAttribute('readonly', '');
+	await expect(pass).toHaveAttribute('readonly', '');
+	await form.getByRole('button', { name: 'change passphrase', exact: true }).click();
+	await expect(pass).not.toHaveAttribute('readonly', '');
+	await form.getByRole('button', { name: 'done changing', exact: true }).click();
+	await expect(pass).toHaveAttribute('readonly', '');
 	await user.fill(VAULT);
 	await expect(user).toHaveValue(VAULT);
 	await form.getByRole('button', { name: 'Show' }).click();

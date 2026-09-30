@@ -25,7 +25,6 @@ export function watchErrors(page: Page) {
 /** Create an empty vault through /setup/ (the skip path), named `name`; ends on the kit page. */
 export async function setupVault(page: Page, name: string) {
 	await page.goto(url('/setup/'));
-	await page.getByTestId('setup-form').getByRole('button', { name: 'change', exact: true }).click();
 	await page.getByLabel('Vault name').fill(name);
 	const passphrase = await page.getByLabel('Passphrase', { exact: true }).inputValue();
 	expect(passphrase.split(' ')).toHaveLength(6);

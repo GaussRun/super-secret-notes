@@ -17,7 +17,7 @@ import { handoffLink, plainText } from './qr';
 import { loadHosts, backendConfigs, type BackendCfg } from './settings';
 import { makeBackends, supported, TRAVELS_WITH_SECRETS, type Adapter } from './backends';
 import { isStrongEnough, estimateBits, MIN_BITS } from './passphrase';
-import { rememberName } from './credentials';
+import { rememberName, rememberedName } from './credentials';
 
 export interface VaultCfg {
 	v: 1;
@@ -165,12 +165,51 @@ class VaultState {
 		return { name: cfg.name, ...r };
 	}
 
-	/** New vault: keys, vault.age on every backend, an empty index, the recovery-by-name record. */
-	async create({ name, passphrase, generated = null, ephemeral = false }: { name: string; passphrase: string; generated?: string | null; ephemeral?: boolean }) {
+	/**
+	 * New vault: keys, vault.age on every backend, an empty index, the recovery-by-name record.
+	 * `replace`: this browser already holds a vault; the new one takes its place only once it is
+	 * made (if anything fails, the old files come back). The old one stays on its hosts.
+	 */
+	async create({ name, passphrase, generated = null, ephemeral = false, replace = false }: { name: string; passphrase: string; generated?: string | null; ephemeral?: boolean; replace?: boolean }) {
 		if (!validVaultName(name)) throw new Error('vault name: letters, digits, space, dot, dash or underscore (up to 63)');
 		if (!isStrongEnough(passphrase)) throw new Error(`that passphrase is about ${Math.round(estimateBits(passphrase))} bits; a new vault wants ${MIN_BITS}+ (6 random words)`);
+		return this.#taking({ replace, ephemeral }, () => this.#create(name, passphrase, generated));
+	}
+
+	/**
+	 * Run a create or recover that writes a vault into this browser. With `replace` the vault
+	 * already stored here is kept aside and comes back, locked, if `fn` fails; it is only gone
+	 * from this browser once the new one is in place.
+	 */
+	async #taking<T>({ replace, ephemeral }: { replace: boolean; ephemeral: boolean }, fn: () => Promise<T>): Promise<T> {
+		let previous: Record<string, Uint8Array> | null = null;
+		const previousName = rememberedName();
+		if (replace && !ephemeral) {
+			if (this.status === 'unlocked') await this.lock();
+			previous = {};
+			for (const f of Object.values(FILES)) {
+				const b = await readBlob(f);
+				if (b) previous[f] = b;
+			}
+		}
 		if (ephemeral) this.#goPublic();
-		if (await readBlob(FILES.vault)) throw new Error('this browser already holds a vault: forget it in Settings first');
+		if (!replace && (await readBlob(FILES.vault))) throw new Error('this browser already holds a vault: forget it in Settings first');
+		try {
+			return await fn();
+		} catch (err) {
+			if (previous?.[FILES.vault]) {
+				// put the old vault back, locked, as it was
+				await this.lock();
+				await clearAll();
+				for (const [f, b] of Object.entries(previous)) await writeBlob(f, b);
+				rememberName(previousName || null);
+				this.status = 'locked';
+			}
+			throw err;
+		}
+	}
+
+	async #create(name: string, passphrase: string, generated: string | null) {
 		const cfg: VaultCfg = { v: 1, name: name.normalize('NFC'), root: DEFAULT_ROOT, backends: backendConfigs(loadHosts()) };
 		const vault = await c.createVault();
 		const vaultBytes = await step('stretching the passphrase with scrypt (slow on purpose)', () => c.encryptVault(vault, passphrase));
@@ -192,9 +231,11 @@ class VaultState {
 	}
 
 	/** Name + passphrase only: the recovery record on the relays, then vault.age, then everything. */
-	async recover(name: string, passphrase: string, { ephemeral = false } = {}) {
-		if (ephemeral) this.#goPublic();
-		if (await readBlob(FILES.vault)) throw new Error('this browser already holds a vault: forget it in Settings first');
+	async recover(name: string, passphrase: string, { ephemeral = false, replace = false } = {}) {
+		return this.#taking({ replace, ephemeral }, () => this.#recover(name, passphrase));
+	}
+
+	async #recover(name: string, passphrase: string) {
 		const hosts = loadHosts();
 		name = name.normalize('NFC');
 		const { secret } = await step('deriving the discovery key (scrypt, a few seconds)', () => bootstrap.discoveryIdentity(passphrase, name));

@@ -54,6 +54,11 @@
 		<PublicComputer bind:checked={publicMode} />
 		{#if err}<p class="error-box" role="alert">{err}</p>{/if}
 		<button type="submit" disabled={busy || !passphrase}>{busy ? 'Running scrypt...' : 'Unlock'}</button>
+		<p class="other" data-testid="other-vault">
+			<a class="button secondary" href={to('/setup/')}>Make a new vault instead</a>
+			<a href={to('/recover/')}>Recover a different vault</a>
+		</p>
+		<p class="muted small">A new vault takes this one's place in this browser. This one stays on its hosts: its vault name and passphrase bring it back (Recover).</p>
 	</form>
 {:else if vault.status === 'none'}
 	<div class="panel">
@@ -66,4 +71,6 @@
 
 <style>
 	.unlock { max-width: 520px; }
+	.other { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+	.small { font-size: 0.85rem; }
 </style>

@@ -6,7 +6,7 @@
 
 	// one thing to do: store a note (or, with a vault open, write the next one)
 	const unlocked = $derived(vault.status === 'unlocked');
-	const primary = $derived(unlocked ? { href: to('/new/'), label: 'New note' } : vault.status === 'locked' ? { href: to('/new/'), label: 'Store a secret note' } : { href: to('/setup/'), label: 'Store a secret note' });
+	const primary = $derived(unlocked ? { href: to('/new/'), label: 'New note' } : vault.status === 'locked' ? { href: to('/unlock/'), label: 'Store a secret note' } : { href: to('/setup/'), label: 'Store a secret note' });
 	const secondary = $derived(unlocked ? { href: to('/notes/'), label: 'My notes' } : { href: to(vault.status === 'locked' ? '/unlock/' : '/recover/'), label: 'Open my vault' });
 </script>
 

@@ -6,7 +6,7 @@
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { generatePassphrase, generateVaultName, estimateBits, isStrongEnough, MIN_BITS } from '$lib/overkill/passphrase';
 	import { loadHosts, backendConfigs } from '$lib/overkill/settings';
-	import { storeCredential } from '$lib/overkill/credentials';
+	import { storeCredential, rememberedName } from '$lib/overkill/credentials';
 	import { page } from '$app/state';
 	import { validVaultName } from '$cli/defaults-core.js';
 	import { to, noteHref } from '$lib/link';
@@ -14,8 +14,9 @@
 	// ?quick=1 (landing page): a throwaway vault on a public computer
 	const quick = page.url.searchParams.has('quick');
 
-	// Note first: the vault name and passphrase are made up and just shown; changing them is possible,
-	// not asked for. They are real inputs (username / new-password) so password managers see them.
+	// Note first: the vault name and passphrase are made up for you. The name is a plain editable
+	// field; the passphrase is shown read-only until "change passphrase". Both are real inputs
+	// (username / new-password) so password managers see them.
 	let noteName = $state('my first secret');
 	let noteText = $state('');
 	let name = $state(generateVaultName());
@@ -35,6 +36,9 @@
 	const bits = $derived(Math.round(estimateBits(passphrase)));
 	const strong = $derived(isStrongEnough(passphrase));
 	const nameOk = $derived(validVaultName(name));
+	// this browser already holds a vault: a new one takes its place here once it is made
+	const replacing = $derived(!quick && (vault.status === 'locked' || vault.status === 'unlocked'));
+	const current = $derived(vault.cfg?.name ?? rememberedName());
 
 	function roll() {
 		name = generateVaultName();
@@ -63,7 +67,7 @@
 		activity.clear();
 		try {
 			const vaultName = name.normalize('NFC');
-			const res = await vault.create({ name: vaultName, passphrase, generated: passphrase === generated ? generated : null, ephemeral: publicMode });
+			const res = await vault.create({ name: vaultName, passphrase, generated: passphrase === generated ? generated : null, ephemeral: publicMode, replace: replacing && !publicMode });
 			let note: string | null = null;
 			let results = res;
 			if (!skip) {
@@ -124,9 +128,15 @@
 {:else}
 	<h1>{quick ? 'Throwaway vault: write your note' : 'Write your first secret note'}</h1>
 	{#if quick}<p class="warn">A made-up vault name and passphrase, kept in this tab only. Write the note, then scan the QR on the next screen with your phone.</p>{/if}
-	{#if vault.status === 'unlocked' || (vault.status === 'locked' && !quick)}
-		<p class="warn">This browser already holds a vault. To make another one here, forget this one in <a href={to('/settings/')}>Settings</a> first (its copies stay on the hosts).</p>
+	{#if vault.status === 'loading'}
+		<p class="muted mono">Checking your clearance level...</p>
 	{:else}
+		{#if replacing}
+			<p class="warn" data-testid="replace-note">
+				This browser holds the vault {#if current}<strong class="id">{current}</strong>{/if}. A new vault takes its place here once it is made; the old one stays on its hosts and comes back with <a href={to('/recover/')}>Recover</a> (its vault name and passphrase).
+				<a href={to(vault.status === 'unlocked' ? '/notes/' : '/unlock/')}>Open it instead</a>
+			</p>
+		{/if}
 		<form method="post" action="#" onsubmit={create} data-testid="setup-form">
 			<div class="panel">
 				<label for="note-name">Note name (only you see it; hosts get an HMAC)</label>
@@ -141,10 +151,10 @@
 			</div>
 
 			<div class="panel compact">
-				<p class="muted small">Your new vault. Nothing to choose: these are made up for you. <strong>Your password manager can save this. Also keep the kit.</strong></p>
+				<p class="muted small">Your new vault. Nothing to choose: these are made up for you (rename the vault if you like). <strong>Your password manager can save this. Also keep the kit.</strong></p>
 				<div class="cred">
 					<label for="vault-name">Vault name</label>
-					<input id="vault-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required readonly={!editing} bind:value={name} />
+					<input id="vault-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required bind:value={name} />
 				</div>
 				<div class="cred">
 					<label for="vault-pass">Passphrase</label>
@@ -154,7 +164,7 @@
 					<button type="button" class="link" onclick={() => (show = !show)} aria-pressed={!show}>{show ? 'Hide' : 'Show'}</button>
 					<button type="button" class="link" onclick={() => copy(passphrase)}>{copied ? 'Copied' : 'Copy'}</button>
 					<button type="button" class="link" onclick={roll}>Roll new words</button>
-					<button type="button" class="link" onclick={() => (editing = !editing)} aria-pressed={editing}>{editing ? 'done changing' : 'change'}</button>
+					<button type="button" class="link" onclick={() => (editing = !editing)} aria-pressed={editing}>{editing ? 'done changing' : 'change passphrase'}</button>
 				</div>
 				{#if editing || !strong || !nameOk}
 					<p class="small {strong ? 'ok' : 'bad'}">Passphrase: about {bits} bits. {strong ? 'Strong enough.' : `Needs ${MIN_BITS}+: try 6 or more random words.`}</p>
