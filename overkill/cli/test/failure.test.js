@@ -99,3 +99,61 @@ test('no index holder answers: the index stays local and a put still works on on
   assert.ok(lines.some((l) => /using the index kept on this device/.test(l)))
   assert.ok((await store.localIndex()).notes.lonely)
 })
+
+// A PrivateBin instance that answers posts only after `delay` ms (the paste is stored at once).
+async function slowPrivatebin (delay) {
+  const http = await import('node:http')
+  const pastes = new Map()
+  const server = http.createServer(async (req, res) => {
+    const chunks = []
+    for await (const ch of req) chunks.push(ch)
+    const send = (o) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(o)) }
+    if (req.method === 'POST') {
+      const body = JSON.parse(Buffer.concat(chunks).toString())
+      if (body.pasteid) {
+        if (pastes.get(body.pasteid)?.deletetoken === body.deletetoken) pastes.delete(body.pasteid)
+        return send({ status: 0 })
+      }
+      const id = c.toHex(c.randomBytes(8))
+      pastes.set(id, { ...body, deletetoken: c.toHex(c.randomBytes(32)) })
+      return setTimeout(() => send({ status: 0, id, url: `/?${id}`, deletetoken: pastes.get(id).deletetoken }), delay)
+    }
+    const id = new URL(req.url, 'http://x').searchParams.get('pasteid')
+    const p = pastes.get(id)
+    send(p ? { status: 0, id, ...p, meta: {} } : { status: 1, message: 'Document does not exist, has expired or has been deleted.' })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return { url: `http://127.0.0.1:${server.address().port}`, pastes, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve) }) }
+}
+
+test('a paste that lands after the deadline: kept with its locator on a backend in use, deleted on a replaced one', async () => {
+  const slow = await slowPrivatebin(400)
+  try {
+    const { ctx, make } = await localBackends([])
+    const { logger, lines } = recorder()
+
+    // in use: the put times out, then lands; the adapter records its locator and token
+    const pb = createBackend({ name: 'pb-slow', type: 'privatebin', url: slow.url }, ctx)
+    const store = new Overkill({ backends: [make('a'), pb], ...(await keys()), logger, hostTimeoutMs: 100 })
+    const res = await store.uploadVault()
+    assert.equal(res[1].ok, false)
+    await store.close()
+    assert.equal(slow.pastes.size, 1)
+    assert.ok((await pb.getLocators())[c.paths.vault], 'the late paste is findable')
+    assert.equal((await pb.get(c.paths.vault)).length > 0, true)
+    assert.ok(lines.some((l) => /pb-slow: vault.age arrived after the deadline; kept/.test(l)))
+
+    // replaced at setup: the late paste is deleted again with its token
+    const cfg = { backends: [{ name: 'pb-late', type: 'privatebin', url: slow.url }] }
+    const picker = fallbackPicker(cfg, { lists: { privatebin: ['https://stand-in.example'] }, make: (bc) => make(bc.name) })
+    const late = createBackend(cfg.backends[0], ctx)
+    const s2 = new Overkill({ backends: [late], ...(await keys()), logger, hostTimeoutMs: 100 })
+    const r2 = await s2.uploadVault({ next: (b) => picker.next(b) })
+    assert.equal(r2[0].replaced, 'pb-late')
+    await s2.close()
+    assert.equal(slow.pastes.size, 1, 'only the first paste is left; the replaced host holds nothing')
+    assert.ok(lines.some((l) => /pb-late: vault.age arrived after the deadline on a host this vault no longer uses; deleted it again/.test(l)))
+  } finally {
+    await slow.close()
+  }
+})

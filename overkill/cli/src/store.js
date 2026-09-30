@@ -16,17 +16,28 @@ export const DEFAULT_HOST_TIMEOUT_MS = 120_000
 
 function withTimeout (promise, ms, what) {
   let timer
-  const limit = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error(`${what}: no answer in ${ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${ms} ms`}`)), ms) })
+  const limit = new Promise((resolve, reject) => { timer = setTimeout(() => reject(Object.assign(new Error(`${what}: no answer in ${ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${ms} ms`}`), { timedOut: true })), ms) })
   return Promise.race([promise, limit]).finally(() => clearTimeout(timer))
 }
 
-/** Give every call on this adapter a deadline, so one silent host never blocks the rest. */
-export function bounded (b, ms = DEFAULT_HOST_TIMEOUT_MS) {
+/**
+ * Give every call on this adapter a deadline, so one silent host never blocks the rest. The call
+ * itself keeps running: a put that succeeds after its deadline is handed to `onLate(b, path, done)`
+ * (`done` settles when it does), so its copy is neither lost track of nor orphaned.
+ */
+export function bounded (b, ms = DEFAULT_HOST_TIMEOUT_MS, onLate = null) {
   if (b.bounded) return b
   const limit = b.timeoutMs ?? ms
   for (const m of ['put', 'get', 'exists', 'list']) {
     const f = b[m]
-    if (typeof f === 'function' && limit) b[m] = (...args) => withTimeout(f.apply(b, args), limit, b.name)
+    if (typeof f !== 'function' || !limit) continue
+    b[m] = (...args) => {
+      const call = f.apply(b, args)
+      return withTimeout(call, limit, b.name).catch((err) => {
+        if (err.timedOut && m === 'put' && onLate) onLate(b, args[0], call)
+        throw err
+      })
+    }
   }
   b.bounded = true
   return b
@@ -49,7 +60,9 @@ export class Overkill {
   constructor ({ backends, keys, vaultBytes, logger = defaultLogger, indexCache = null, now = () => new Date(), indexSync = 'always', hostTimeoutMs = DEFAULT_HOST_TIMEOUT_MS }) {
     if (!backends.length) throw new Error('no backends configured')
     this.hostTimeoutMs = hostTimeoutMs
-    for (const b of backends) bounded(b, hostTimeoutMs)
+    this.late = new Set() // puts that missed their deadline and are still running
+    this.onLate = (b, rel, call) => this.lateWrite(b, rel, call)
+    for (const b of backends) bounded(b, hostTimeoutMs, this.onLate)
     if (!['always', 'manual', 'never'].includes(indexSync)) throw new Error(`index_sync must be always, manual or never (got ${indexSync})`)
     this.backends = backends
     // backends at server-chosen addresses (pastes, Blossom) never hold the index
@@ -107,7 +120,7 @@ export class Overkill {
     if (next) {
       await Promise.all(res.filter((r) => !r.ok).map(async (r) => {
         for (let cand = await next(r.backend); cand; cand = await next(r.backend)) {
-          bounded(cand, this.hostTimeoutMs)
+          bounded(cand, this.hostTimeoutMs, this.onLate)
           if (this.keys) cand.unlock?.(this.keys)
           this.log.info(`${r.backend.name} failed; trying ${cand.name} instead`)
           try {
@@ -125,6 +138,24 @@ export class Overkill {
       }))
     }
     return res
+  }
+
+  /**
+   * A put that answered after its deadline. On a backend still in use the copy stays: the adapter
+   * has recorded its locator (and delete token), and the next check marks it OK. On a backend that
+   * is no longer used (replaced by a setup fallback) the copy is deleted again, so no paste or blob
+   * is left behind on a volunteer host that nobody can find or remove.
+   */
+  lateWrite (b, rel, call) {
+    const handled = call.then(async () => {
+      if (this.backends.includes(b)) {
+        this.log.info(`${b.name}: ${rel} arrived after the deadline; kept (the next check confirms it)`)
+        return
+      }
+      const gone = await b.dropPath?.(rel).catch((err) => { this.log.debug(`${b.name}: ${err.message}`); return false })
+      this.log.info(`${b.name}: ${rel} arrived after the deadline on a host this vault no longer uses; ${gone ? 'deleted it again' : 'nothing to delete'}`)
+    }, () => {}).finally(() => this.late.delete(handled))
+    this.late.add(handled)
   }
 
   /** Swap one adapter for another (a setup fallback), keeping the read order. */
@@ -523,7 +554,13 @@ export class Overkill {
     return { fixed, failed }
   }
 
-  async close () {
+  /** `lateGraceMs`: how long to wait for puts that missed their deadline (they record or clean up). */
+  async close ({ lateGraceMs = 10_000 } = {}) {
+    if (this.late.size) {
+      let timer
+      await Promise.race([Promise.allSettled([...this.late]), new Promise((resolve) => { timer = setTimeout(resolve, lateGraceMs) })])
+      clearTimeout(timer)
+    }
     await Promise.all(this.backends.map((b) => b.close?.().catch(() => {})))
   }
 }
