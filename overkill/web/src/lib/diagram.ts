@@ -10,11 +10,8 @@ export interface HostGroup {
 	id: string;
 	name: string;
 	count: string;
-	/** the host's own (native) encryption; `ours` when the host has none and we add a layer */
+	/** the host's own (native) encryption, or what it does with our copy */
 	layer: string;
-	ours?: boolean;
-	/** an extra middle line (the opt-in services) */
-	extra?: string;
 	logo: string | null; // file name under static/logos/, or null for a text badge
 	optIn?: boolean;
 }
@@ -23,8 +20,9 @@ export const GROUPS: HostGroup[] = [
 	{ id: 'privatebin', name: 'PrivateBin', count: '3 instances', layer: 'native: AES-256-GCM, key in the link', logo: 'privatebin.svg' },
 	{ id: 'cryptpad', name: 'CryptPad', count: '2 instances', layer: 'native: XSalsa20-Poly1305', logo: 'cryptpad.svg' },
 	{ id: 'nostr', name: 'Nostr', count: '4 relays', layer: 'native NIP-44: ChaCha20 + HMAC-SHA256', logo: null },
-	{ id: 'blossom', name: 'Blossom', count: '3 servers', layer: 'no native encryption; we add AES-256-GCM', ours: true, logo: null },
-	{ id: 'optin', name: 'Opt-in accounts', count: '', extra: 'MEGA, Proton Drive, Filen, Fileverse', layer: "each service's own client-side encryption", logo: null, optIn: true }
+	{ id: 'blossom', name: 'Blossom', count: '3 servers', layer: 'stores our encrypted copy as-is', logo: null },
+	// the account services work from the command line tool only, not yet in the browser
+	{ id: 'optin', name: 'Coming soon', count: '', layer: 'MEGA, Proton Drive, Filen, Fileverse', logo: null, optIn: true }
 ];
 
 export const TITLE = "How a note gets our encryption, then each host's native encryption, on a dozen hosts";
@@ -32,7 +30,7 @@ export const DESC =
 	'Your note exists in plaintext only in your browser or terminal. Our encryption comes first, on your device: age (X25519 and ChaCha20-Poly1305), ' +
 	'then AES-256-GCM with keys derived by HKDF, in open-source code (crypto.js). Then copies go to independent hosts, each with its own native encryption: ' +
 	'3 PrivateBin instances (native AES-256-GCM, key in the link), 2 CryptPad instances (native XSalsa20-Poly1305), 4 Nostr relays (native NIP-44: ChaCha20 and HMAC-SHA256), ' +
-	'and 3 Blossom servers, which have no native encryption, so we add an extra AES-256-GCM layer there: 12 copies. Opt-in: MEGA, Proton Drive, Filen and Fileverse, each with its own client-side encryption. ' +
+	'and 3 Blossom servers, which store our encrypted copy as-is: 12 copies. Coming soon: MEGA, Proton Drive, Filen and Fileverse. ' +
 	'Recovery: any one healthy copy plus your vault name and passphrase gives your note back.';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -60,19 +58,20 @@ function badge(x: number, y: number, size: number, g: HostGroup, logoHref: (f: s
 		const pad = 5;
 		return `${tile}<image class="dg-logo" data-logo="${g.id}" href="${esc(logoHref(g.logo))}" x="${x + pad}" y="${y + pad}" width="${size - 2 * pad}" height="${size - 2 * pad}" preserveAspectRatio="xMidYMid meet"/>`;
 	}
-	const label = g.optIn ? '+4' : g.name;
-	const fs = label.length > 5 ? 9 : 11;
-	return `${tile}<text class="dg-badge" data-badge="${g.id}" x="${x + size / 2}" y="${y + size / 2 + fs / 3}" text-anchor="middle" font-size="${fs}">${esc(label)}</text>`;
+	// no cleared logo: a neutral monogram (the name is right next to it), "+4" for the opt-in group
+	const label = g.optIn ? '+4' : g.name[0];
+	const c = size / 2;
+	return `${tile}<circle class="dg-mono" data-badge="${g.id}" cx="${x + c}" cy="${y + c}" r="${c - 6}"/>` +
+		`<text class="dg-mono-text" x="${x + c}" y="${y + c + 5}" text-anchor="middle">${esc(label)}</text>`;
 }
 
-const rowHeight = (g: HostGroup) => (g.extra ? 72 : 56);
+const rowHeight = (_g: HostGroup) => 56;
 
 function hostRow(x: number, y: number, w: number, g: HostGroup, logoHref: (f: string) => string) {
 	const h = rowHeight(g);
 	const lines = [`<text class="dg-host-name" x="${x + 58}" y="${y + 24}">${esc(g.name)}${g.count ? ` <tspan class="dg-count">${esc(g.count)}</tspan>` : ''}</text>`];
-	if (g.extra) lines.push(`<text class="dg-layer" x="${x + 58}" y="${y + 42}">${esc(g.extra)}</text>`);
-	lines.push(`<text class="dg-layer${g.ours ? ' dg-ours' : ''}" data-layer="${g.id}" x="${x + 58}" y="${y + (g.extra ? 60 : 43)}">${esc(g.layer)}</text>`);
-	return `<g class="dg-host${g.optIn ? ' dg-optin' : ''}${g.ours ? ' dg-host-ours' : ''}" data-host="${g.id}">` +
+	lines.push(`<text class="dg-layer" data-layer="${g.id}" x="${x + 58}" y="${y + 43}">${esc(g.layer)}</text>`);
+	return `<g class="dg-host${g.optIn ? ' dg-optin' : ''}" data-host="${g.id}">` +
 		`<rect class="dg-row" x="${x}" y="${y}" width="${w}" height="${h}" rx="10"/>` +
 		badge(x + 8, y + 8, 40, g, logoHref) + lines.join('') + `</g>`;
 }
@@ -145,16 +144,15 @@ export function diagramSvg(layout: Layout, { logoHref = (f: string) => `logos/${
 		`<title id="${id}-title">${esc(TITLE)}</title><desc id="${id}-desc">${esc(DESC)}</desc>${style ? `<style>${style}</style>` : ''}${arrowHead}${parts.join('')}</svg>`;
 }
 
-/** Colors and animation as CSS values (CSS variables in the page, fixed colors in the file). `warn` marks the layer we add on Blossom. */
-export function diagramStyle(c: { text: string; muted: string; line: string; box: string; boxStroke: string; accent: string; row: string; tile: string; warn: string }) {
+/** Colors and animation as CSS values (CSS variables in the page, fixed colors in the file). */
+export function diagramStyle(c: { text: string; muted: string; line: string; box: string; boxStroke: string; accent: string; row: string; tile: string }) {
 	return `.dg{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;}` +
 		`.dg-title{font-weight:700;font-size:15px;fill:${c.text}}.dg-sub,.dg-layer{font-size:11.5px;fill:${c.muted}}.dg-hint{font-size:10.5px;fill:${c.accent}}` +
 		`.dg-host-name{font-weight:700;font-size:13.5px;fill:${c.text}}.dg-count{font-weight:400;fill:${c.muted}}` +
 		`.dg-total,.dg-return-text{font-size:12.5px;fill:${c.text}}.dg-total{font-weight:700}` +
 		`.dg-box{fill:${c.box};stroke:${c.boxStroke};stroke-width:1.5}.dg-note .dg-box{stroke-dasharray:5 4}.dg-box-ours{stroke:${c.accent};stroke-width:2}` +
 		`.dg-row{fill:${c.row};stroke:${c.boxStroke};stroke-width:1}.dg-optin{opacity:.72}.dg-optin .dg-row{stroke-dasharray:4 4}` +
-		`.dg-host-ours .dg-row{stroke:${c.warn};stroke-dasharray:3 3}.dg-ours{fill:${c.warn}}` +
-		`.dg-tile{fill:${c.tile};stroke:${c.boxStroke};stroke-width:1}.dg-badge{font-weight:700;fill:#1b2430}` +
+				`.dg-tile{fill:${c.tile};stroke:${c.boxStroke};stroke-width:1}.dg-mono{fill:#e6ebf0}.dg-mono-text{font-weight:700;font-size:14px;fill:#4a5866}` +
 		`.dg-line{fill:none;stroke:${c.line};stroke-width:1.6}.dg-dashed{stroke-dasharray:5 4}.dg-return{stroke:${c.accent};stroke-dasharray:6 4}` +
 		`.dg-head{fill:${c.line}}.dg-return-text{fill:${c.accent}}.dg-packet{fill:${c.accent}}` +
 		`@media (prefers-reduced-motion: reduce){.dg-packet{display:none}}`;

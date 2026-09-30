@@ -14,6 +14,7 @@
 </p>
 
 <Diagram size="large" />
+<p class="muted small" data-testid="cli-accounts">The command line tool can already use MEGA, Proton Drive, Filen and Fileverse.</p>
 
 <div class="panel">
 	<h2>Redundancy first</h2>

@@ -27,7 +27,19 @@ for (const path of PAGES) {
 				await expect(svg.locator('[data-step="ours"]')).toContainText('Our encryption');
 				await expect(svg.locator('[data-step="ours"]')).toContainText('AES-256-GCM (HKDF keys)');
 				await expect(svg.locator('[data-layer="privatebin"]')).toHaveText('native: AES-256-GCM, key in the link');
-				await expect(svg.locator('[data-layer="blossom"]')).toHaveClass(/dg-ours/);
+				// Blossom looks like every other row, and says what it does with our copy
+				await expect(svg.locator('[data-layer="blossom"]')).toHaveText('stores our encrypted copy as-is');
+				await expect(svg.locator('.dg-ours, .dg-host-ours')).toHaveCount(0);
+				// no text badge repeats the name next to it: neutral monograms
+				// the account services: a muted "Coming soon" row, no encryption line
+				const soon = svg.locator('[data-host="optin"]');
+				await expect(soon).toContainText('Coming soon');
+				await expect(soon).toContainText('MEGA, Proton Drive, Filen, Fileverse');
+				await expect(soon).not.toContainText('encryption');
+				await expect(soon).toHaveClass(/dg-optin/);
+				if (path === '/how-it-works/') await expect(page.getByTestId('cli-accounts')).toHaveText('The command line tool can already use MEGA, Proton Drive, Filen and Fileverse.');
+				for (const [id, mono] of [['nostr', 'N'], ['blossom', 'B'], ['optin', '+4']]) await expect(svg.locator(`[data-host="${id}"] .dg-mono-text`)).toHaveText(mono);
+				await expect(svg.locator('.dg-badge')).toHaveCount(0);
 				await expect(svg.locator('desc')).toContainText('any one healthy copy plus your vault name and passphrase');
 				await expect(svg).toContainText('12 copies');
 				for (const id of ['privatebin', 'nostr', 'blossom', 'optin']) await expect(svg.locator(`[data-host="${id}"]`)).toBeVisible();
