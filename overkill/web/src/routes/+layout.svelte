@@ -18,7 +18,7 @@
 		['/status/', 'Status'],
 		['/hosts/', 'Hosts'],
 		['/settings/', 'Settings'],
-		['/recovery-kit/', 'Recovery kit'],
+		['/recovery-kit/', 'Vault access'],
 		['/how-it-works/', 'How it works'],
 		['/thanks/', 'Thanks'],
 		['/trust/', 'Trust model']

@@ -5,6 +5,8 @@
 	import { to } from '$lib/link';
 	import { rememberedName, savedCredential } from '$lib/overkill/credentials';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
+	import AccessPaste from '$lib/components/AccessPaste.svelte';
+	import type { Access } from '$lib/overkill/access';
 	let { children } = $props();
 
 	// the username the password manager pairs the passphrase with
@@ -25,6 +27,18 @@
 	});
 	let busy = $state(false);
 	let err = $state('');
+
+	// a pasted access link or kit: the passphrase goes into the field (for this vault only)
+	function take(a: Access) {
+		const held = rememberedName();
+		if (held && a.name !== held) {
+			err = `That is the access for "${a.name}"; this browser holds "${held}". Use "Recover a different vault" for it.`;
+			return;
+		}
+		err = '';
+		name = a.name;
+		passphrase = a.passphrase;
+	}
 
 	async function unlock(e: SubmitEvent) {
 		e.preventDefault();
@@ -47,8 +61,10 @@
 	<form class="panel unlock" method="post" action="#" onsubmit={unlock} data-testid="unlock-form">
 		<h2>Locked</h2>
 		<p class="muted">This browser holds your vault, encrypted. Keys live only in memory, so every reload asks again.</p>
+		<AccessPaste onaccess={take} />
 		<label for="unlock-name">Vault name</label>
-		<input id="unlock-name" name="username" type="text" autocomplete="username" readonly={Boolean(rememberedName())} bind:value={name} />
+		<!-- a normal field (not readonly): password managers skip read-only fields when filling -->
+		<input id="unlock-name" name="username" type="text" autocomplete="username" bind:value={name} />
 		<label for="unlock-pass">Passphrase</label>
 		<input id="unlock-pass" name="password" type="password" autocomplete="current-password" required bind:value={passphrase} />
 		<PublicComputer bind:checked={publicMode} />

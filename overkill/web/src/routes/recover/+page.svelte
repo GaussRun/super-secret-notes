@@ -8,6 +8,8 @@
 	import { storeCredential, rememberedName } from '$lib/overkill/credentials';
 	import { parseHandoff } from '$lib/overkill/qr';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
+	import AccessPaste from '$lib/components/AccessPaste.svelte';
+	import { parseAccess, looksLikeAccess, type Access } from '$lib/overkill/access';
 
 	let name = $state('');
 	let passphrase = $state('');
@@ -36,6 +38,20 @@
 		name = handoff.name;
 		passphrase = handoff.passphrase;
 		fromLink = true;
+	}
+
+	// one paste: both fields filled, one click to recover
+	let pasted = $state(false);
+	function take(a: Access) {
+		name = a.name;
+		passphrase = a.passphrase;
+		pasted = true;
+	}
+	// a link or kit pasted into the name field splits itself
+	function nameInput() {
+		if (!looksLikeAccess(name)) return;
+		const a = parseAccess(name);
+		if (a) take(a);
 	}
 
 	async function recover(e: SubmitEvent) {
@@ -79,12 +95,16 @@
 		</p>
 	{/if}
 	<form class="panel" method="post" action="#" onsubmit={recover} data-testid="recover-form">
+		<AccessPaste onaccess={take} />
+		{#if pasted && !fromLink}
+			<p class="ok" data-testid="paste-ready"><strong>Recover {name}?</strong> Press Recover.</p>
+		{/if}
 		{#if fromLink}
 			<p class="ok" data-testid="from-link"><strong>Recover this vault?</strong> The link filled in the vault name and passphrase (and has already been wiped from the address bar). Press Recover to go on; your password manager can save it afterwards.</p>
 		{/if}
 		<p class="muted">No kit, no files: the vault name and passphrase find a small encrypted record on the Nostr relays, which leads to vault.age and from there to everything else.</p>
 		<label for="rec-name">Vault name</label>
-		<input id="rec-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required bind:value={name} />
+		<input id="rec-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required bind:value={name} oninput={nameInput} />
 		<label for="rec-pass">Passphrase</label>
 		<input id="rec-pass" name="password" type="password" autocomplete="current-password" required bind:value={passphrase} />
 		<PublicComputer bind:checked={publicMode} />

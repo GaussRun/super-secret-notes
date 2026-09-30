@@ -4,7 +4,7 @@
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { to, noteHref } from '$lib/link';
-	import SendToPhone from '$lib/components/SendToPhone.svelte';
+	import ShareVault from '$lib/components/ShareVault.svelte';
 	let phone = $state(false);
 
 	type Entry = { id: string; sha256: string; size: number; updated: string };
@@ -34,9 +34,9 @@
 		<h1>Notes</h1>
 		<a class="button" href={to('/new/')}>New note</a>
 		<button class="secondary" onclick={load}>Reload</button>
-		<button class="secondary" onclick={() => (phone = !phone)} aria-expanded={phone}>Send to phone</button>
+		<button class="secondary" onclick={() => (phone = !phone)} aria-expanded={phone}>Share this vault</button>
 	</div>
-	{#if phone}<SendToPhone />{/if}
+	{#if phone}<ShareVault />{/if}
 	{#if err}<p class="error-box" role="alert">{err}</p>{/if}
 	{#if offline}<p class="warn">The hosts holding the index did not answer; this is this browser's last copy.</p>{/if}
 	{#if notes === null && !err}

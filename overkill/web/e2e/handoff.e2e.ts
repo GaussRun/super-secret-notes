@@ -109,7 +109,7 @@ test('public computer: quick throwaway vault, nothing stored, a note, the QR car
 
 test('the QR hides itself after 60 seconds', async () => {
 	await nav(page, 'Notes');
-	await page.getByRole('button', { name: 'Send to phone' }).click();
+	await page.getByRole('button', { name: 'Share this vault' }).click();
 	// fake timers from here on: the QR's countdown is the only timer the test drives
 	await page.clock.install();
 	await page.getByRole('button', { name: 'Show QR (recovery link)' }).click();

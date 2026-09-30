@@ -41,7 +41,7 @@ export const WORDLIST = new Set(readFileSync(new URL('../../cli/src/wordlist/eff
 /** In-app navigation through the header (a page load would lock the vault, by design). */
 const PATHS = { Notes: '/notes/', New: '/new/', Check: '/check/', Status: '/status/', Hosts: '/hosts/', Kit: '/recovery-kit/', Settings: '/settings/', Trust: '/trust/' };
 // the menu's own labels for them
-export const MENU = { Notes: 'My notes', New: 'New note', Check: 'Check copies', Status: 'Status', Hosts: 'Hosts', Kit: 'Recovery kit', Settings: 'Settings', Trust: 'Trust model' };
+export const MENU = { Notes: 'My notes', New: 'New note', Check: 'Check copies', Status: 'Status', Hosts: 'Hosts', Kit: 'Vault access', Settings: 'Settings', Trust: 'Trust model' };
 
 /** Open the header menu (if closed). */
 export async function openMenu(page: Page) {

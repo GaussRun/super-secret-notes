@@ -31,7 +31,7 @@ test('write a note, one click: vault, hosts, note, recovery record; then recover
 	await expect(page.getByTestId('save-step')).toContainText('Save these in your password manager');
 	await expect(page.getByTestId('save-step').getByRole('button', { name: /password manager/ })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Print the kit' })).toBeVisible();
-	await expect(page.getByTestId('send-to-phone')).toBeVisible();
+	await expect(page.getByTestId('share-vault')).toBeVisible();
 	await expectNoLeak(page, passphrase);
 	for (const r of fakes.relays) {
 		const tags = [...r.store.values()].map((e) => e.tags.find((t) => t[0] === 'd')?.[1]);

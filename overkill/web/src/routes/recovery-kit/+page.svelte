@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Locked from '$lib/components/Locked.svelte';
-	import SendToPhone from '$lib/components/SendToPhone.svelte';
+	import ShareVault from '$lib/components/ShareVault.svelte';
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { to } from '$lib/link';
 
@@ -21,10 +21,11 @@
 </script>
 
 <Locked>
-	<h1>Recovery kit</h1>
-	<p class="muted">The same sheet the CLI prints. It holds your keys: print it, or save it somewhere offline, then close this page. <code>super-secret-notes recover --kit &lt;file&gt;</code> reads it back.</p>
+	<h1>Vault access</h1>
 	{#if err}<p class="error-box" role="alert">{err}</p>{/if}
-	<SendToPhone />
+	<ShareVault />
+	<h2>Recovery kit (print or save)</h2>
+	<p class="muted">The same sheet the CLI prints. It holds your keys: print it, or save it somewhere offline, then close this page. <code>super-secret-notes recover --kit &lt;file&gt;</code> reads it back.</p>
 	{#if kit}
 		<div class="row">
 			<a class="button" {href} download="super-secret-notes-recovery-kit-{vault.cfg?.name ?? 'vault'}.txt">Download as text</a>

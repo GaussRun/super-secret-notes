@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
-	import SendToPhone from '$lib/components/SendToPhone.svelte';
+	import ShareVault from '$lib/components/ShareVault.svelte';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { vault, MIN_COPIES } from '$lib/overkill/vault.svelte';
@@ -199,7 +199,7 @@
 		<a class="button secondary" href={to('/recovery-kit/')}>Print the kit</a>
 	</div>
 
-	<SendToPhone />
+	<ShareVault />
 {:else}
 	<h1>{quick ? 'Throwaway vault: write your note' : 'Write your first secret note'}</h1>
 	{#if quick}<p class="warn">A made-up vault name and passphrase, kept in this tab only. Write the note, then scan the QR on the next screen with your phone.</p>{/if}
