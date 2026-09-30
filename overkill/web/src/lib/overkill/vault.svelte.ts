@@ -366,6 +366,19 @@ class VaultState {
 		});
 	}
 
+	/** Exactly what one host stores for a note (nothing decrypted), for "View raw copy". */
+	async rawCopy(name: string, backend: string): Promise<{ text: string; format: 'json' | 'base64'; link?: string } | null> {
+		return this.store.rawCopy(name, backend);
+	}
+
+	/** Type and location of a backend of this vault, by its internal name (also ones the browser cannot drive). */
+	hostOf(name: string): { type: string; where: string } | null {
+		const b = this.backends.find((x) => x.name === name);
+		if (b) return { type: b.type, where: b.where };
+		const cfg = this.cfg?.backends.find((x) => x.name === name);
+		return cfg ? { type: cfg.type, where: String(cfg.url ?? cfg.origin ?? cfg.path ?? '') } : null;
+	}
+
 	/** Download and verify every copy of one note now; the result goes into the health ledger. */
 	async checkNote(name: string) {
 		const store = this.store;

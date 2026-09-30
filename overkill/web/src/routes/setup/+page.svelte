@@ -210,7 +210,7 @@
 		<form method="post" action="#" onsubmit={create} data-testid="setup-form">
 			<div class="panel">
 				<label for="note-text">Your secret</label>
-				<textarea id="note-text" class="big-text" bind:this={noteBox} bind:value={noteText} placeholder="recovery codes, a seed phrase backup hint, the wifi password"></textarea>
+				<textarea id="note-text" class="big-text" bind:this={noteBox} bind:value={noteText}></textarea>
 				<label for="note-name">Note name (optional; only you see it, hosts get an HMAC)</label>
 				<div class="name-row">
 					<input id="note-name" type="text" autocomplete="off" bind:value={noteName} />

@@ -3,6 +3,8 @@
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { ago, retention } from '$cli/status.js';
 	import { to } from '$lib/link';
+	import HostType from '$lib/components/HostType.svelte';
+	import HostLink from '$lib/components/HostLink.svelte';
 
 	type Row = { backend: string; copies: number; healthy: number; errors: number; unverified: number; oldestOk: string | null; nextExpiry: string | null };
 	let data = $state<{ rows: Row[]; warnings: string[]; written: string | null } | null | undefined>(undefined);
@@ -26,11 +28,13 @@
 	{:else if data}
 		<div class="panel table-scroll">
 			<table data-testid="status-table">
-				<thead><tr><th>Host</th><th>Healthy</th><th>Oldest OK</th><th>Retention</th></tr></thead>
+				<thead><tr><th>Type</th><th>Where</th><th>Healthy</th><th>Oldest OK</th><th>Retention</th></tr></thead>
 				<tbody>
 					{#each data.rows as r (r.backend)}
-						<tr>
-							<td class="id">{r.backend}</td>
+						{@const h = vault.hostOf(r.backend)}
+						<tr data-backend={r.backend}>
+							<td><HostType type={h?.type ?? ''} name={r.backend} /></td>
+							<td>{#if h}<HostLink where={h.where} />{/if}</td>
 							<td class="mono {r.copies - r.unverified - r.healthy > 0 ? 'bad' : r.unverified ? '' : 'ok'}">{r.healthy}/{r.copies}</td>
 							<td class="mono">{ago(r.oldestOk)}</td>
 							<td class="small">{retention(vault.backends.find((b) => b.name === r.backend)?.type, r.nextExpiry)}</td>

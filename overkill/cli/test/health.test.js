@@ -144,3 +144,38 @@ test('status Retention column: the kind of promise, plain dates', async () => {
   assert.equal(retention('cryptpad', null), 'while the account is active (instance policy)')
   for (const t of ['mega', 'proton-cli', 'filen', 'fileverse']) assert.equal(retention(t, null), 'while the account exists')
 })
+
+test('get records what it verified: the copy it read is OK now, the ones it skipped get their failure; kept locally, uploaded with the next write', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'ssn-health-get-'))
+  const ctx = { root: 'ovk', home: dir }
+  const backends = ['a', 'b'].map((n) => createBackend({ name: n, type: 'local', path: path.join(dir, n) }, ctx))
+  const vault = await c.createVault()
+  const cache = { blob: null, write: async (b) => { cache.blob = b }, read: async () => cache.blob }
+  let clock = new Date('2026-09-30T10:00:00Z')
+  const store = new Overkill({ backends, keys: await c.unlockKeys(vault), vaultBytes: await c.encryptVault(vault, 'pw', { logN: 10 }), logger: quiet, indexCache: cache, now: () => clock })
+  await store.uploadVault()
+  await store.writeIndex(c.emptyIndex())
+  const { entry } = await store.put('memo', 'hello', { sample: false })
+  // flip a byte of a's copy: get falls back to b
+  const file = path.join(dir, 'a', 'ovk', 'notes', `${entry.id}.ovk`)
+  const bytes = await readFile(file)
+  bytes[bytes.length - 1] ^= 1
+  await writeFile(file, bytes)
+  clock = new Date('2026-09-30T11:00:00Z')
+  const r = await store.get('memo')
+  assert.equal(r.from, 'b')
+  const health = (await store.localIndex()).health.memo
+  assert.equal(health.b.status, 'ok')
+  assert.equal(health.b.last_ok, clock.toISOString())
+  assert.equal(health.b.last_checked, clock.toISOString())
+  assert.equal(health.a.status, 'corrupt')
+  assert.equal(health.a.last_checked, clock.toISOString())
+  // no extra remote write for the read: the remote index still has the put's ledger
+  const remote = await c.decryptIndex(store.keys, await backends[1].get(c.paths.index))
+  assert.notEqual(remote.health?.memo?.b?.last_checked, clock.toISOString())
+  // the next write carries it
+  await store.put('other', 'x', { sample: false })
+  const after = await c.decryptIndex(store.keys, await backends[1].get(c.paths.index))
+  assert.equal(after.health.memo.b.last_ok, clock.toISOString())
+  assert.equal(after.health.memo.a.status, 'corrupt')
+})

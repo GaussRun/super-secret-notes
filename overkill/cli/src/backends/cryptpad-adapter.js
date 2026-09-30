@@ -85,6 +85,9 @@ export function createCryptpad (cfg, ctx, { loadDrive, resolveSecret }) {
     async exists (rel) {
       return (await open()).exists(rel)
     },
+    async raw (rel) {
+      return (await open()).raw(rel)
+    },
     async list (dir) {
       const prefix = dir ? `${dir}/` : ''
       return (await (await open()).list(prefix)).map((p) => p.slice(prefix.length)).filter((p) => !p.includes('/'))

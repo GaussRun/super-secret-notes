@@ -1,6 +1,7 @@
 // The landing actions in each state of this browser: no vault (store a note in a new one), a
-// stored locked vault (open it; a new vault is the smaller second action), an open vault (the next
-// note). "Store note in new vault" always leads to the note-first setup, never to an unlock form.
+// stored locked vault (a new note in it: unlock, then /new/; "Open my vault" beside it; a new
+// vault only as a small link), an open vault (the next note). "Store note in new vault" always
+// leads to the note-first setup, never to an unlock form. ?next= only takes in-app pages.
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { startAllFakes, type Fakes } from './fakes';
 import { url, useFakes, watchErrors } from './helpers';
@@ -46,6 +47,7 @@ test('landing: no vault, a stored locked vault, an open vault', async ({ browser
 	await none.p.click();
 	await expect(page).toHaveURL(url('/setup/'));
 	await page.getByLabel('Vault name').fill('velvet-otter-harbor-lantern');
+	const pass = await page.getByLabel('Passphrase', { exact: true }).inputValue();
 	await page.getByLabel('Your secret').fill('landing states');
 	await page.getByRole('button', { name: 'Encrypt and scatter' }).click();
 	await expect(page.getByTestId('setup-done')).toBeVisible({ timeout: 90_000 });
@@ -55,21 +57,48 @@ test('landing: no vault, a stored locked vault, an open vault', async ({ browser
 	await expect(page).toHaveURL(url('/'));
 	await expectActions(page, ['New note', '/new/'], ['My notes', '/notes/']);
 
-	// 3. stored and locked (a reload locks it): open it is the big green action, with its name
+	// 3. stored and locked (a reload locks it): a new note in it is the big green action, with its name
 	await page.goto(url('/'));
-	const stored = await expectActions(page, ['Open my vault', '/unlock/'], ['Store note in new vault', '/setup/']);
+	const stored = await expectActions(page, ['New note in my vault', '/unlock/?next=%2Fnew%2F'], ['Open my vault', '/unlock/']);
 	expect(await bg(stored.p)).toBe(green);
+	await expect(stored.s).toHaveClass(/\bbutton\b/); // a regular button, not a link, not green
 	await expect(page.getByTestId('stored-vault-name')).toHaveText('velvet-otter-harbor-lantern');
+	const newVault = page.getByTestId('new-vault-link');
+	await expect(newVault).toHaveText('Store note in new vault');
+	await expect(newVault).toHaveAttribute('href', url('/setup/'));
+	await expect(newVault).not.toHaveClass(/\bbutton\b/);
 	for (const [w, h] of [[1280, 800], [375, 740]]) {
 		await page.setViewportSize({ width: w, height: h });
-		await expect(stored.p).toBeInViewport({ ratio: 1 });
-		await expect(stored.s).toBeInViewport({ ratio: 1 });
+		for (const l of [stored.p, stored.s, newVault]) await expect(l).toBeInViewport({ ratio: 1 });
 		const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
 		expect(overflow).toBeLessThanOrEqual(0);
 		await page.screenshot({ path: `test-results/landing-stored-${w}.png` });
 	}
+	await page.setViewportSize({ width: 1280, height: 800 });
+	// the primary: unlock, then straight to a new note
+	await stored.p.click();
+	await expect(page).toHaveURL(url('/unlock/?next=%2Fnew%2F'));
+	await page.getByLabel('Passphrase', { exact: true }).fill(pass);
+	await page.getByRole('button', { name: 'Unlock' }).click();
+	await expect(page).toHaveURL(url('/new/'), { timeout: 60_000 });
+	await expect(page.getByLabel('Top secret contents')).toBeVisible();
+	// "Open my vault": unlock, then the notes
+	await page.goto(url('/'));
+	await page.getByTestId('secondary-cta').click();
+	await expect(page).toHaveURL(url('/unlock/'));
+	await page.getByLabel('Passphrase', { exact: true }).fill(pass);
+	await page.getByRole('button', { name: 'Unlock' }).click();
+	await expect(page).toHaveURL(url('/notes/'), { timeout: 60_000 });
+	// ?next= is never an open redirect: anything but an allowed in-app page goes to the notes
+	for (const bad of ['https://evil.example/', '//evil.example/', '/unlock/', 'javascript:alert(1)', '/new/../../x']) {
+		await page.goto(url(`/unlock/?next=${encodeURIComponent(bad)}`));
+		await page.getByLabel('Passphrase', { exact: true }).fill(pass);
+		await page.getByRole('button', { name: 'Unlock' }).click();
+		await expect(page).toHaveURL(url('/notes/'), { timeout: 60_000 });
+	}
 	// "Store note in new vault" goes to the setup, never to an unlock form
-	await stored.s.click();
+	await page.goto(url('/'));
+	await page.getByTestId('new-vault-link').click();
 	await expect(page).toHaveURL(url('/setup/'));
 	await expect(page.getByTestId('replace-note')).toContainText('velvet-otter-harbor-lantern');
 	await expect(page.getByTestId('setup-form')).toBeVisible();

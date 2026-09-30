@@ -6,8 +6,8 @@ those are listed in `overkill/cli/THIRD_PARTY.md`. npm dependencies carry their 
 
 ## Logos (`static/logos/`)
 
-Used unaltered (the Nostr icon cropped and resized, see below), in the encryption diagram only (`src/lib/diagram.ts`, `static/diagram.svg`), to
-name where copies go. No endorsement by these projects is implied, and the diagram says so.
+Used unaltered (the Nostr icon cropped and resized, see below), in the encryption diagram (`src/lib/diagram.ts`, `static/diagram.svg`) and next to host names
+(`src/lib/components/HostType.svelte`), to name where copies go. No endorsement by these projects is implied, and the diagram says so.
 
 | File | Source (pinned) | License / terms | SHA-256 |
 |---|---|---|---|

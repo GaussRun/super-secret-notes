@@ -137,14 +137,18 @@ export function create (cfg, ctx, { browser = false } = {}) {
     return res.status === 0 || /does not exist|expired|deleted/i.test(res.message ?? '')
   }
 
-  async function api (url, init = {}) {
+  async function apiText (url, init = {}) {
     const res = await fetch(url, {
       ...init,
       headers: browser
         ? { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'text/plain' } : {}) }
         : { 'User-Agent': UA, Accept: 'application/json', 'X-Requested-With': 'JSONHttpRequest', ...(init.body ? { 'Content-Type': 'application/json' } : {}) }
     })
-    const text = await res.text()
+    return { res, text: await res.text() }
+  }
+
+  async function api (url, init = {}) {
+    const { res, text } = await apiText(url, init)
     let json
     try { json = JSON.parse(text) } catch { throw new Error(`${base} answered HTTP ${res.status} with non-JSON (${text.length} bytes)`) }
     return json
@@ -182,6 +186,17 @@ export function create (cfg, ctx, { browser = false } = {}) {
           if (gone) { delete o[id]; await save() }
         }
       }
+    },
+    /**
+     * Exactly what the instance serves for this copy (the paste JSON, still encrypted), plus the
+     * paste's own link: PrivateBin's page opens its layer with the #key and shows our ciphertext.
+     */
+    async raw (rel) {
+      const loc = (await load())[rel]
+      if (!loc) return null
+      const { id } = parseLocator(loc.url)
+      const { text } = await apiText(`${base}/?pasteid=${encodeURIComponent(id)}`)
+      return { text, format: 'json', link: loc.url }
     },
     async get (rel) {
       const loc = (await load())[rel]

@@ -4,6 +4,8 @@
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { loadHosts, ALTERNATIVES } from '$lib/overkill/settings';
 	import { to } from '$lib/link';
+	import HostType from '$lib/components/HostType.svelte';
+	import HostLink from '$lib/components/HostLink.svelte';
 
 	const hosts = loadHosts();
 
@@ -45,13 +47,13 @@
 		<p>Name <strong class="mono">{vault.cfg.name}</strong>, root folder <span class="mono">{vault.cfg.root ?? 'overkill'}</span></p>
 		<p class="muted small">Nostr public key (not a secret): <span class="id" data-testid="npub">{vault.npub}</span></p>
 		<table>
-			<thead><tr><th>Name</th><th>Type</th><th>Where</th></tr></thead>
+			<thead><tr><th>Type</th><th>Where</th></tr></thead>
 			<tbody>
 				{#each vault.backends as b (b.name)}
-					<tr><td class="mono">{b.name}</td><td>{b.type}</td><td class="id">{b.where}</td></tr>
+					<tr data-backend={b.name}><td><HostType type={b.type} name={b.name} /></td><td><HostLink where={b.where} /></td></tr>
 				{/each}
 				{#each vault.unsupported as b (b.name)}
-					<tr class="muted"><td class="mono">{b.name}</td><td>{b.type}</td><td class="id">{b.url ?? b.origin ?? ''} (CLI only)</td></tr>
+					<tr class="muted" data-backend={b.name}><td><HostType type={b.type} name={b.name} /></td><td><HostLink where={String(b.url ?? b.origin ?? '')} /> (command line only)</td></tr>
 				{/each}
 			</tbody>
 		</table>

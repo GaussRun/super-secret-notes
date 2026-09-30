@@ -71,7 +71,7 @@
 	<h1>{editing ? 'Edit note' : 'New note'}</h1>
 	<form class="panel" onsubmit={save}>
 		<label for="note-text">Top secret contents</label>
-		<textarea id="note-text" bind:value={text} placeholder="github: 7f3a-91c2 ..."></textarea>
+		<textarea id="note-text" bind:value={text}></textarea>
 		<label for="note-name">Name (optional; only you see it, hosts get an HMAC)</label>
 		<div class="name-row">
 			<input id="note-name" type="text" autocomplete="off" readonly={Boolean(editing)} bind:value={name} />

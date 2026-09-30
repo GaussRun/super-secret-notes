@@ -143,11 +143,13 @@ test('check flags a corrupted copy, repair fixes it', async () => {
 
 test('status reads the ledger offline', async () => {
 	await nav(page, 'Status');
-	await expect(page.getByTestId('status-table')).toContainText('pb-127');
 	const table = page.getByTestId('status-table');
-	await expect(table.locator('tr', { hasText: 'pb-127' }).first()).toContainText('never (host-confirmed)');
-	await expect(table.locator('tr', { hasText: 'nostr-127' }).first()).toContainText(/none promised; republish by \d{4}-\d{2}-\d{2}$/);
-	await expect(table.locator('tr', { hasText: 'cp-127' }).first()).toContainText('while the account is active');
+	await expect(table.locator('tr[data-backend="pb-127"]')).toContainText('never (host-confirmed)');
+	await expect(table.locator('tr[data-backend="pb-127"]')).toContainText('PrivateBin');
+	await expect(table.locator('tr[data-backend="nostr-127"]')).toContainText(/none promised; republish by \d{4}-\d{2}-\d{2}$/);
+	await expect(table.locator('tr[data-backend="cp-127"]')).toContainText('while the account is active');
+	// product names and base URLs, not internal backend names
+	expect(await table.innerText()).not.toMatch(/\b(pb|cp|nostr|blossom)-\d/);
 	await expect(page.getByText('No warnings.')).toBeVisible();
 });
 

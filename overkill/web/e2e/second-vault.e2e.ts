@@ -35,7 +35,7 @@ test('a second vault while one is stored and locked; notes stay apart; the first
 	// a reload locks it; the landing action leads to unlock-or-new, both visible
 	await page.goto(url('/'));
 	await page.getByTestId('primary-cta').click();
-	await expect(page).toHaveURL(url('/unlock/'));
+	await expect(page).toHaveURL(url('/unlock/?next=%2Fnew%2F'));
 	await expect(page.getByTestId('unlock-form')).toBeVisible();
 	await expect(page.getByLabel('Vault name')).toHaveValue('vault one');
 	await expect(page.getByTestId('other-vault').getByRole('link', { name: 'Store note in new vault' })).toBeVisible();

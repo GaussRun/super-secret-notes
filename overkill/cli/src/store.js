@@ -28,7 +28,7 @@ function withTimeout (promise, ms, what) {
 export function bounded (b, ms = DEFAULT_HOST_TIMEOUT_MS, onLate = null) {
   if (b.bounded) return b
   const limit = b.timeoutMs ?? ms
-  for (const m of ['put', 'get', 'exists', 'list']) {
+  for (const m of ['put', 'get', 'exists', 'list', 'raw']) {
     const f = b[m]
     if (typeof f !== 'function' || !limit) continue
     b[m] = (...args) => {
@@ -209,9 +209,18 @@ export class Overkill {
       return local
     }
     const merged = c.mergeIndexes(...good.map((r) => r.value))
+    // ledger results kept only on this device so far (reads record them without a remote write)
+    const local = await this.localIndex().catch(() => null)
+    if (local?.health) merged.health = c.mergeHealth([merged.health, local.health])
     await this.learnLocators(merged)
     await this.cache(merged)
     return merged
+  }
+
+  /** Put the pending ledger results into the local index copy now; the next index write uploads them. */
+  async keepLedger (index) {
+    if (!this.pending.length) return
+    await this.cache(this.withHealth(index))
   }
 
   // Locator-addressed backends (PrivateBin) learn where other devices put things, once per run.
@@ -386,19 +395,38 @@ export class Overkill {
     // not in the index: still try, a note put after the last index sync is found by its name
     if (!entry) this.log.debug(`"${name}" is not in the index; trying anyway, sha256 cannot be verified`)
     const problems = []
+    // every copy read here was fully verified (or failed): that goes into the health ledger, like a check
+    const note = (b, status) => { if (entry) this.record(name, b.name, status, b.expiresAt?.(c.paths.note(id))) }
     for (const b of this.backends) {
       const status = await this.readCopy(b, id, entry)
+      note(b, status.status)
       if (status.status === STATUS.OK) {
         if (!entry) this.log.warn(`"${name}" is not in the index (written after the last index sync?); read it by name, its sha256 cannot be checked`)
         for (const p of problems) this.log.warn(`${p.backend}: ${p.status}${p.detail ? ` (${p.detail})` : ''}, used ${b.name} instead`)
+        await this.keepLedger(index).catch((err) => this.log.debug(`ledger: ${err.message}`))
         return { bytes: status.plaintext, from: b.name, entry, problems }
       }
       problems.push({ backend: b.name, status: status.status, detail: status.detail })
     }
+    await this.keepLedger(index).catch((err) => this.log.debug(`ledger: ${err.message}`))
     const why = problems.map((p) => `${p.backend} ${p.status}`).join(', ')
     if (entry) throw new Error(`no healthy copy of "${name}" (${why})`)
     if (problems.every((p) => p.status === STATUS.MISSING)) throw new Error(`no note called "${name}". \`super-secret-notes ls\` lists your notes.`)
     throw new Error(`no note called "${name}" in the index, and no backend had a readable copy (${why})`)
+  }
+
+  /**
+   * What one backend stores for a note, exactly as it serves it (nothing decrypted), for showing
+   * what the host sees: { text, format: 'json' | 'base64', link? }. Null when not there.
+   */
+  async rawCopy (name, backendName) {
+    name = c.normalizeName(name)
+    const b = this.backends.find((x) => x.name === backendName)
+    if (!b) throw new Error(`no backend called ${backendName}`)
+    if (!b.raw) throw new Error(`${backendName} (${b.type}) cannot show its raw copy`)
+    const index = await this.localIndex().catch(() => null) ?? await this.mergedIndex()
+    const id = index.notes[name]?.id ?? await c.blobIdForName(this.keys, name)
+    return b.raw(c.paths.note(id))
   }
 
   /** Download and fully verify one copy of a note. */

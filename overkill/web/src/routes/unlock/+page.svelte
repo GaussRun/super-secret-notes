@@ -3,10 +3,13 @@
 	import { goto } from '$app/navigation';
 	import Locked from '$lib/components/Locked.svelte';
 	import { vault } from '$lib/overkill/vault.svelte';
-	import { to } from '$lib/link';
+	import { to, safeNext } from '$lib/link';
+	import { page } from '$app/state';
 
+	// ?next=/new/ (the landing page's "New note in my vault"): in-app paths from a fixed list only
+	const next = safeNext(page.url.searchParams.get('next'));
 	$effect(() => {
-		if (vault.status === 'unlocked') goto(to('/notes/'));
+		if (vault.status === 'unlocked') goto(to(next));
 	});
 </script>
 

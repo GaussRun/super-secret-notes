@@ -6,6 +6,45 @@
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { vault, type NoteHost } from '$lib/overkill/vault.svelte';
 	import { to } from '$lib/link';
+	import HostType from '$lib/components/HostType.svelte';
+	import HostLink from '$lib/components/HostLink.svelte';
+	import { typeName, baseUrl } from '$lib/hosttype';
+
+	const BAD = ['missing', 'corrupt', 'stale', 'error'];
+	const LAYERS: Record<string, string> = {
+		privatebin: "PrivateBin's encrypted paste, as its API serves it: PrivateBin's AES-256-GCM layer (ct, adata) over our two layers.",
+		cryptpad: 'The pad as CryptPad hands it over once its own layer is removed in transit: our base64 ciphertext (two layers) inside.',
+		nostr: 'The kind 30078 event(s) straight from this relay: content is the NIP-44 ciphertext over our two layers, signed by the vault key.',
+		blossom: 'The blob as served, base64: our extra AES-256-GCM layer over our two layers.'
+	};
+	// the raw copy panel per host: closed, loading, or what the host serves
+	let raw = $state<Record<string, { loading: boolean; text?: string; format?: string; link?: string; error?: string }>>({});
+
+	async function toggleRaw(h: NoteHost) {
+		if (raw[h.name]) return void delete raw[h.name];
+		raw[h.name] = { loading: true };
+		try {
+			const r = await vault.rawCopy(name, h.name);
+			raw[h.name] = r ? { loading: false, ...r } : { loading: false, error: 'This host has no copy of this note.' };
+		} catch (x) {
+			raw[h.name] = { loading: false, error: (x as Error).message };
+		}
+	}
+
+	const hhmm = (iso: string) => `${iso.slice(11, 16)} UTC`;
+	const summary = $derived.by(() => {
+		const total = hosts.length;
+		const ok = hosts.filter((h) => h.status === 'ok').length;
+		const bad = hosts.filter((h) => BAD.includes(h.status)).length;
+		const unknown = total - ok - bad;
+		const latest = hosts.map((h) => h.lastChecked).filter((x): x is string => Boolean(x)).sort().at(-1);
+		const checked = latest ? `, checked ${hhmm(latest)}` : '';
+		if (total && ok === total) return { text: `Stored on ${total} of ${total} hosts, all OK${checked}`, warn: false };
+		const parts = [`${ok} of ${total} OK`];
+		if (bad) parts.push(`${bad} need repair`);
+		if (unknown) parts.push(`${unknown} not verified yet`);
+		return { text: parts.join(', ') + checked, warn: bad > 0 };
+	});
 
 	const name = $derived(page.params.name ?? '');
 	let text = $state('');
@@ -106,35 +145,58 @@
 				</span>
 			{/if}
 		</div>
-		{#if readFrom}<p class="muted small" data-testid="note-source">Read from <span class="mono">{readFrom.backend}</span> in {(readFrom.ms / 1000).toFixed(1)} s, both layers and the sha256 verified.</p>{/if}
-		{#if problems.length}<p class="warn small">Skipped on the way: {problems.map((p) => `${p.backend} ${p.status}`).join(', ')}.</p>{/if}
+		{#if readFrom}{@const src = vault.hostOf(readFrom.backend)}<p class="muted small" data-testid="note-source" data-backend={readFrom.backend}>Read from {src ? `${typeName(src.type)} (${baseUrl(src.where) ?? src.where})` : 'a host'} in {(readFrom.ms / 1000).toFixed(1)} s, both layers and the sha256 verified.</p>{/if}
+		{#if problems.length}<p class="warn small">Skipped on the way: {problems.map((p) => { const h = vault.hostOf(p.backend); return `${h ? `${typeName(h.type)} ${baseUrl(h.where) ?? ''}` : 'a host'} ${p.status}`; }).join(', ')}.</p>{/if}
 		{#if entry}<p class="muted small">Updated {entry.updated}. Blob id <span class="id">{entry.id}</span></p>{/if}
 
-		<div class="panel">
-			<div class="row">
-				<h2>Where this note lives</h2>
-				<button class="secondary" onclick={checkNow} disabled={busy} data-testid="check-note">{busy ? 'Checking...' : 'Check all copies now'}</button>
-			</div>
+		<details class="panel lives" data-testid="note-lives">
+			<summary>
+				<span class="lives-title">Where this note lives:</span>
+				<span class={summary.warn ? 'warn' : 'ok'} data-testid="lives-summary">{summary.text}</span>
+			</summary>
 			<div class="table-scroll">
-				<table data-testid="note-hosts">
-					<thead><tr><th>Host</th><th>Where</th><th>Status</th><th>Last verified</th></tr></thead>
+				<table data-testid="note-hosts" class="compact">
+					<thead><tr><th>Type</th><th>Where</th><th>Status</th><th>Last verified</th><th></th></tr></thead>
 					<tbody>
 						{#each hosts as h (h.name)}
-							<tr data-testid="host-{h.name}">
-								<td class="mono">
-									{h.name}
+							<tr data-testid="host-{h.name}" data-backend={h.name}>
+								<td>
+									<HostType type={h.type} name={h.name} />
 									{#if readFrom?.backend === h.name}<span class="badge read" data-testid="read-from">read from here</span>{/if}
 								</td>
-								<td class="id">{h.where}</td>
+								<td><HostLink where={h.where} /></td>
 								<td class="mono {h.status === 'ok' ? 'ok' : h.status === 'unknown' ? 'muted' : 'bad'}">{h.status.toUpperCase()}</td>
-								<td class="mono small">{when(h.lastOk)}</td>
+								<td class="mono">{h.lastChecked && h.status === 'ok' && Date.now() - Date.parse(h.lastChecked) < 60_000 ? 'just now' : when(h.lastOk)}</td>
+								<td><button class="link" onclick={() => toggleRaw(h)} aria-expanded={Boolean(raw[h.name])} data-testid="raw-{h.name}">{raw[h.name] ? 'Hide raw copy' : 'View raw copy'}</button></td>
 							</tr>
+							{#if raw[h.name]}
+								{@const r = raw[h.name]}
+								<tr class="raw-row">
+									<td colspan="5" data-testid="raw-view-{h.name}">
+										{#if r.loading}
+											<p class="muted mono">Fetching what this host stores...</p>
+										{:else if r.error}
+											<p class="bad">{r.error}</p>
+										{:else}
+											<p class="small">{LAYERS[h.type] ?? 'The stored bytes, base64.'} Nothing is decrypted here.</p>
+											<pre class="raw" data-testid="raw-text">{r.text}</pre>
+											{#if r.link}
+												<p class="small">
+													<a href={r.link} target="_blank" rel="noopener noreferrer" data-testid="raw-link">{h.type === 'privatebin' ? 'Open in PrivateBin' : h.type === 'cryptpad' ? 'Open in CryptPad' : 'Open'}</a>
+													<span class="warn">This link contains {h.type === 'privatebin' ? "PrivateBin's" : "CryptPad's"} key for this copy; don't share it.</span>
+												</p>
+											{/if}
+										{/if}
+									</td>
+								</tr>
+							{/if}
 						{/each}
 					</tbody>
 				</table>
 			</div>
-			<p class="muted small">From the health ledger in this browser's copy of the index. UNKNOWN: not verified yet; "Check all copies now" downloads and verifies each one.</p>
-		</div>
+			<p class="muted small">From this browser's health ledger; UNKNOWN means not verified yet.</p>
+			<button class="secondary" onclick={checkNow} disabled={busy} data-testid="check-note">{busy ? 'Checking...' : 'Check all copies now'}</button>
+		</details>
 	{:else if !err}
 		<p class="muted mono">Peeling the layers...</p>
 	{/if}
@@ -146,6 +208,12 @@
 	.body { width: 100%; min-height: 12em; font-size: 0.95rem; }
 	.small { font-size: 0.85rem; }
 	.status { min-height: 2.6em; }
-	.badge.read { color: var(--cyan); margin-left: 6px; }
+	.badge.read { color: var(--cyan); margin-left: 6px; font-size: 0.75rem; border: 1px solid currentColor; border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+	.lives summary { cursor: pointer; }
+	.lives-title { font-weight: 700; margin-right: 6px; }
+	table.compact { font-size: 0.85rem; }
+	table.compact td, table.compact th { padding: 3px 8px; }
+	.raw { max-height: 24em; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; background: var(--panel-2); padding: 8px; border-radius: 6px; margin: 4px 0; }
+	button.link { background: none; border: 0; color: var(--cyan); text-decoration: underline; padding: 0 4px; font-weight: 400; font-size: 0.8rem; }
 	.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>

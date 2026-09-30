@@ -140,6 +140,14 @@ export function create (cfg, ctx, { fetchImpl = globalThis.fetch } = {}) {
       const oldSha = old && shaOf(old.url)
       if (oldSha && oldSha !== sha && !Object.values(s).some((v) => shaOf(v.url) === oldSha)) await remove(oldSha).catch(() => {})
     },
+    /** The stored blob as served (our extra AES layer on top of our two), base64. */
+    async raw (rel) {
+      const loc = (await load())[rel]
+      if (!loc) return null
+      const res = await fetchImpl(`${base}/${shaOf(loc.url)}`)
+      if (!res.ok) throw new Error(`${base}: ${reason(res)}`)
+      return { text: toBase64(new Uint8Array(await res.arrayBuffer())), format: 'base64' }
+    },
     async get (rel) {
       const loc = (await load())[rel]
       if (!loc || !key) return null

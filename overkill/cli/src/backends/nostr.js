@@ -301,6 +301,17 @@ export function create (cfg, ctx, { WebSocketImpl, pause = 3000, backoff = 30_00
       else published.delete(rel)
       return bytes
     },
+    /** The events this relay returns for the copy (head and chunks), as served: content is NIP-44 ciphertext. */
+    async raw (rel) {
+      if (locked()) return null
+      const got = []
+      await openEvents(secret, dTag(rel), async (tags) => {
+        const events = await query(tags)
+        got.push(...events)
+        return events
+      })
+      return { text: JSON.stringify(got, null, 2), format: 'json' }
+    },
     async exists (rel) {
       if (locked()) return false
       const d = dTag(rel)

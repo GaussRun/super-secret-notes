@@ -95,6 +95,15 @@ export class CryptPadBackend {
     return Boolean(this.#find(path));
   }
 
+  // The pad as CryptPad hands it to the client (its own layer removed by the realtime protocol,
+  // our base64 ciphertext inside), and the pad's link with its key.
+  async raw(path) {
+    const hit = this.#find(path);
+    if (!hit) return null;
+    const href = hit.data.href || hit.data.roHref;
+    return { text: await this.s.readPad(href), format: 'json', link: this.origin + href };
+  }
+
   async get(path) {
     const hit = this.#find(path);
     if (!hit) throw Object.assign(new Error(`not found: ${path}`), { code: 'ENOENT' });
