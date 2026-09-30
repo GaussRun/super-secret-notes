@@ -99,3 +99,24 @@ test('note names: an empty one gets a made-up name; two notes in a row never sha
 	expect(new Set([first, offered, third]).size).toBe(3);
 	await ctx.close();
 });
+
+test('the setup page focuses the note box, but never takes focus from a field someone is already in', async ({ browser }) => {
+	const ctx = await browser.newContext();
+	await useFakes(ctx, fakes);
+	// a slow frame: the page's own focus call comes after the user has started typing
+	await ctx.addInitScript(() => {
+		window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 400) as unknown as number;
+	});
+	const page = await ctx.newPage();
+	await page.goto(url('/setup/'));
+	const name = page.getByLabel('Vault name');
+	await name.fill('typed right away');
+	await page.waitForTimeout(800);
+	await expect(name).toBeFocused();
+	await expect(name).toHaveValue('typed right away');
+	await expect(page.getByLabel('Your secret')).toHaveValue('');
+	// with nothing focused, the note box gets it
+	await page.goto(url('/setup/'));
+	await expect(page.getByLabel('Your secret')).toBeFocused();
+	await ctx.close();
+});

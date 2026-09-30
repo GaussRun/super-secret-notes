@@ -25,8 +25,13 @@
 	let navigated = $state(false);
 	afterNavigate(() => (navigated = true));
 	// the form appears once the vault state is known, which can be after the navigation
+	// only when nothing else has focus yet: never pull the caret out of a field someone is typing in
 	$effect(() => {
-		if (navigated && noteBox) requestAnimationFrame(() => noteBox?.focus());
+		if (navigated && noteBox)
+			requestAnimationFrame(() => {
+				const active = document.activeElement;
+				if (!active || active === document.body) noteBox?.focus();
+			});
 	});
 	let noteText = $state('');
 	let name = $state(generateVaultName());
