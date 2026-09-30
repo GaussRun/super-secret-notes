@@ -81,12 +81,20 @@ export class RelayConn {
 
   async open () {
     if (this.ready) return this.ready
-    this.ready = new Promise((resolve, reject) => {
+    const ready = new Promise((resolve, reject) => {
       const ws = new this.WebSocketImpl(this.url)
-      const timer = setTimeout(() => { reject(new Error(`${this.url}: connect timed out`)); ws.close() }, this.timeout)
+      // a failed connect is forgotten at once: the next call dials again, whether or not (and
+      // whenever) the socket fires a close event afterwards
+      const fail = (err) => {
+        clearTimeout(timer)
+        if (this.ready === ready) this.ready = null
+        reject(err)
+      }
+      const timer = setTimeout(() => { fail(new Error(`${this.url}: connect timed out`)); ws.close() }, this.timeout)
       ws.onopen = () => { clearTimeout(timer); resolve() }
-      ws.onerror = (ev) => { clearTimeout(timer); reject(new Error(`${this.url}: ${ev.message || 'connection failed (down, or refusing us)'}`)) }
+      ws.onerror = (ev) => fail(new Error(`${this.url}: ${ev.message || 'connection failed (down, or refusing us)'}`))
       ws.onclose = () => {
+        if (this.ws !== ws) return // an old socket closing late must not touch the current one
         this.ready = null
         for (const h of this.pending.values()) h.fail(new Error(`${this.url}: connection closed`))
         this.pending.clear()
@@ -94,7 +102,8 @@ export class RelayConn {
       ws.onmessage = (ev) => this.onmessage(ev.data)
       this.ws = ws
     })
-    return this.ready
+    this.ready = ready
+    return ready
   }
 
   onmessage (data) {

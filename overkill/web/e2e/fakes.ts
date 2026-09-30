@@ -170,6 +170,10 @@ export async function startFakeBlossom(): Promise<FakeBlossom> {
 export interface FakeRelay {
 	url: string;
 	store: Map<string, Event>;
+	/** true: every connection is dropped at once, like a relay that is down */
+	down: boolean;
+	/** true: events for the index (d tag ending in "index.ovk") are refused, everything else is kept */
+	refuseIndex: boolean;
 	close(): Promise<void>;
 }
 
@@ -189,7 +193,9 @@ export async function startFakeRelay(): Promise<FakeRelay> {
 		res.end(JSON.stringify({ name: 'fake relay', software: 'overkill-e2e' }));
 	});
 	const wss = new WebSocketServer({ server });
+	const state = { down: false, refuseIndex: false };
 	wss.on('connection', (ws) => {
+		if (state.down) return void ws.terminate();
 		const send = (m: unknown) => ws.send(JSON.stringify(m));
 		ws.on('message', (raw: Buffer) => {
 			let msg: unknown[];
@@ -202,6 +208,7 @@ export async function startFakeRelay(): Promise<FakeRelay> {
 				const ev = msg[1] as Event;
 				if (raw.length > 65536) return send(['OK', ev.id, false, `invalid: event too large: ${raw.length}`]);
 				if (!verifyEvent(ev)) return send(['OK', ev.id, false, 'invalid: bad signature']);
+				if (state.refuseIndex && ev.tags.some((t) => t[0] === 'd' && /index\.ovk$/.test(t[1]))) return send(['OK', ev.id, false, 'blocked: test refuses the index']);
 				const key = ev.kind >= 30000 && ev.kind < 40000 ? `${ev.kind}:${ev.pubkey}:${dOf(ev)}` : ev.id;
 				const cur = store.get(key);
 				if (cur && (cur.created_at > ev.created_at || (cur.created_at === ev.created_at && cur.id <= ev.id))) {
@@ -221,6 +228,19 @@ export async function startFakeRelay(): Promise<FakeRelay> {
 	});
 	const url = (await listen(server)).replace(/^http/, 'ws');
 	return {
+		get down() {
+			return state.down;
+		},
+		set down(v: boolean) {
+			state.down = v;
+			if (v) for (const c of wss.clients) c.terminate();
+		},
+		get refuseIndex() {
+			return state.refuseIndex;
+		},
+		set refuseIndex(v: boolean) {
+			state.refuseIndex = v;
+		},
 		url,
 		store,
 		close: () =>

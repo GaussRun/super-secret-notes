@@ -16,7 +16,7 @@
 	let text = $state('');
 	let busy = $state(false);
 	let err = $state('');
-	let saved = $state<{ name: string; ok: number; total: number; sampled: string[] } | null>(null);
+	let saved = $state<{ name: string; ok: number; total: number; sampled: string[]; findable: boolean | null } | null>(null);
 	let loaded = false;
 	// the text as last stored (or loaded for editing): anything else is not stored yet
 	let storedText = $state('');
@@ -47,6 +47,7 @@
 		activity.clear();
 		try {
 			retried = await vault.repair(await vault.check());
+			if (saved) saved = { ...saved, findable: true };
 			const now = await vault.check();
 			const notes = now.notes as Record<string, { status: string }[]>;
 			const copies = saved ? notes[saved.name] : null;
@@ -72,6 +73,7 @@
 				name: name.trim().normalize('NFC'),
 				ok: r.results.filter((x) => x.ok).length,
 				total: r.results.length,
+				findable: (r as { findable?: boolean | null }).findable ?? null,
 				sampled: r.sampled.map((x: { key: string; backend: string; status: string }) => `${x.key} on ${x.backend} ${x.status}`)
 			};
 		} catch (x) {
@@ -99,8 +101,9 @@
 		<div class="panel" data-testid="saved">
 			<p class={saved.ok === saved.total ? 'ok' : 'warn'}>Saved "{saved.name}" to {saved.ok}/{saved.total} hosts.</p>
 			{#if saved.ok < saved.total}<p data-testid="stored-summary">Stored on {saved.ok} hosts; {saved.total - saved.ok} failed (will retry).</p>{/if}
+			{#if saved.findable === false}<p class="warn" data-testid="not-findable">Stored on {saved.ok} {saved.ok === 1 ? 'host' : 'hosts'}, but not yet findable from other devices: no host that keeps the list of your notes took the update. Keep this tab open or save the recovery kit, and Retry.</p>{/if}
 			{#if saved.ok < MIN_COPIES}<p class="warn" data-testid="few-copies">Only {saved.ok} copy so far. Retry copies it to the hosts that did not answer.</p>{/if}
-			{#if saved.ok < saved.total}
+			{#if saved.ok < saved.total || saved.findable === false}
 				<button type="button" onclick={retry} disabled={retrying} data-testid="retry">{retrying ? 'Retrying...' : 'Retry now'}</button>
 				{#if retried}<p class="small" data-testid="retried">Retry: {retried.fixed.length} repaired, {retried.failed.length} still failing.</p>{/if}
 			{/if}

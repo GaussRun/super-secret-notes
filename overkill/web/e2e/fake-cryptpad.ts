@@ -44,6 +44,8 @@ export interface FakeCryptpad {
 	channels: Map<string, Channel>;
 	pins: Map<string, Set<string>>;
 	authRequests: string[];
+	/** true: HTTP 503 and dropped websockets, like an instance that is down */
+	down: boolean;
 	close(): Promise<void>;
 }
 
@@ -56,12 +58,17 @@ export async function startFakeCryptpad({ loginSalt = 'fake-instance-salt', cors
 	const authRequests: string[] = [];
 	const HK = hex(8); // 16 characters: how clients recognise the history keeper
 	let origin = '';
+	const state = { down: false };
 
 	const server = http.createServer(async (req, res) => {
 		const chunks: Buffer[] = [];
 		for await (const c of req) chunks.push(c as Buffer);
 		const raw = Buffer.concat(chunks).toString();
 		res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+		if (state.down) {
+			res.statusCode = 503;
+			return res.end('down');
+		}
 		const url = new URL(req.url ?? '/', origin);
 		const json = (code: number, o: unknown) => {
 			res.statusCode = code;
@@ -181,6 +188,7 @@ export async function startFakeCryptpad({ loginSalt = 'fake-instance-salt', cors
 
 	const wss = new WebSocketServer({ server, path: '/cryptpad_websocket' });
 	wss.on('connection', (ws) => {
+		if (state.down) return void ws.terminate();
 		const uid = hex(16);
 		sockets.set(uid, ws);
 		ws.send(JSON.stringify([0, '', 'IDENT', uid]));
@@ -238,6 +246,13 @@ export async function startFakeCryptpad({ loginSalt = 'fake-instance-salt', cors
 	if (!addr || typeof addr === 'string') throw new Error('no port');
 	origin = `http://127.0.0.1:${addr.port}`;
 	return {
+		get down() {
+			return state.down;
+		},
+		set down(v: boolean) {
+			state.down = v;
+			if (v) for (const c of wss.clients) c.terminate();
+		},
 		url: origin,
 		blocks,
 		channels,

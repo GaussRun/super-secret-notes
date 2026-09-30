@@ -2,7 +2,12 @@
 import * as c from './crypto.js'
 import { logger as defaultLogger } from './log.js'
 
-export const STATUS = { OK: 'OK', MISSING: 'MISSING', CORRUPT: 'CORRUPT', STALE: 'STALE', ERROR: 'ERROR' }
+// STALE: an older version the index knows it replaced (repair overwrites it). DIVERGED: a
+// version the index does not know, possibly newer (a device whose index update never arrived),
+// so nothing ever overwrites it; `get --from <backend>` reads it.
+export const STATUS = { OK: 'OK', MISSING: 'MISSING', CORRUPT: 'CORRUPT', STALE: 'STALE', DIVERGED: 'DIVERGED', ERROR: 'ERROR' }
+// how many replaced blob hashes a note's index entry remembers (older ones count as DIVERGED)
+export const SUPERSEDED_MAX = 16
 
 const bytesEqual = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -76,6 +81,7 @@ export class Overkill {
     this.indexCache = indexCache
     this.now = now
     this.pending = [] // health ledger results not yet written to the index
+    this.indexWrites = Promise.resolve()
   }
 
   /** Remember a verification result for the health ledger (written with the next index). */
@@ -142,7 +148,9 @@ export class Overkill {
 
   /**
    * A put that answered after its deadline. On a backend still in use the copy stays: the adapter
-   * has recorded its locator (and delete token), and the next check marks it OK. On a backend that
+   * has recorded its locator (and delete token), and the next check marks it OK. The index that
+   * went up meanwhile still names the replaced copy (which the adapter deletes), so on a
+   * locator-addressed backend the last index is written again with the new locator. On a backend that
    * is no longer used (replaced by a setup fallback) the copy is deleted again, so no paste or blob
    * is left behind on a volunteer host that nobody can find or remove.
    */
@@ -150,6 +158,7 @@ export class Overkill {
     const handled = call.then(async () => {
       if (this.backends.includes(b)) {
         this.log.info(`${b.name}: ${rel} arrived after the deadline; kept (the next check confirms it)`)
+        if (b.getLocators && this.lastIndex) await this.writeIndex(this.lastIndex).catch((err) => this.log.warn(`index update after the late ${rel} on ${b.name} failed: ${err.message}`))
         return
       }
       const gone = await b.dropPath?.(rel).catch((err) => { this.log.debug(`${b.name}: ${err.message}`); return false })
@@ -208,10 +217,9 @@ export class Overkill {
       await this.learnLocators(local)
       return local
     }
-    const merged = c.mergeIndexes(...good.map((r) => r.value))
-    // ledger results kept only on this device so far (reads record them without a remote write)
-    const local = await this.localIndex().catch(() => null)
-    if (local?.health) merged.health = c.mergeHealth([merged.health, local.health])
+    // this device's copy goes in too: it may hold writes no index holder took yet, and ledger
+    // results that reads recorded without a remote write
+    const merged = c.mergeIndexes(...good.map((r) => r.value), await this.localIndex().catch(() => null))
     await this.learnLocators(merged)
     await this.cache(merged)
     return merged
@@ -228,8 +236,9 @@ export class Overkill {
     if (this.learned) return
     this.learned = true
     for (const b of this.backends) {
-      if (b.learnLocators) await b.learnLocators(index.locators?.[b.name])
+      // pastes first: their creation times let an adapter keep a newer locator of its own
       if (b.adoptPastes) await b.adoptPastes(index.pastes?.[b.name])
+      if (b.learnLocators) await b.learnLocators(index.locators?.[b.name])
     }
   }
 
@@ -279,6 +288,13 @@ export class Overkill {
    * with index_sync "always" also on the index-holding backends (all of them, or `only`).
    */
   async writeIndex (index, { only } = {}) {
+    // one at a time: a late put's index update must not race an operation's own
+    const run = this.indexWrites.then(() => this.writeIndexNow(index, { only }))
+    this.indexWrites = run.catch(() => {})
+    return run
+  }
+
+  async writeIndexNow (index, { only } = {}) {
     // index copies from before the index left the paste backends: delete them (once)
     for (const b of this.backends) {
       if (b.dropPath && (await b.getLocators?.())?.[c.paths.index]) await b.dropPath(c.paths.index)
@@ -367,9 +383,14 @@ export class Overkill {
     name = c.normalizeName(name)
     const bytes = c.toBytes(data)
     const id = await c.blobIdForName(this.keys, name)
-    const entry = { id, sha256: await c.sha256Hex(bytes), size: bytes.length, updated: new Date().toISOString() }
     const blob = await c.encryptBlob(this.keys, id, bytes)
     const index = await this.mergedIndex()
+    // the blob hash tells this exact upload apart from every other one (random nonces), and the
+    // hashes it replaces let repair tell a known-older copy (STALE) from an unknown one (DIVERGED)
+    const blobSha = await c.sha256Hex(blob)
+    const prev = index.notes[name]
+    const superseded = [...new Set([prev?.blob_sha256, ...(prev?.superseded ?? [])].filter((h) => h && h !== blobSha))].slice(0, SUPERSEDED_MAX)
+    const entry = { id, sha256: await c.sha256Hex(bytes), size: bytes.length, updated: new Date().toISOString(), blob_sha256: blobSha, ...(superseded.length ? { superseded } : {}) }
     const res = await this.each((b) => b.put(c.paths.note(id), blob))
     for (const r of res) {
       if (r.ok) this.log.debug(`${r.backend.name}: stored ${c.paths.note(id)} (${blob.length} bytes)`)
@@ -382,16 +403,36 @@ export class Overkill {
     // a spot check of other copies rides along with this index write; it never fails the put
     const sampled = sample ? await this.sample(index, { exclude: name }).catch((err) => { this.log.debug(`sample: ${err.message}`); return [] }) : []
     index.notes[name] = entry
-    await this.writeIndex(index)
-    return { entry, sampled, stored, results: res.map((r) => ({ backend: r.backend.name, ok: r.ok, error: r.error?.message })) }
+    // `indexed`: remote index copies written (null: index_sync keeps it on this device). Without
+    // one, the copies exist but no other device can find them yet (paste locators live in the index).
+    const up = await this.writeIndex(index)
+    const indexed = this.remoteIndex ? up.filter((r) => r.ok).length : null
+    const findable = this.remoteIndex ? indexed > 0 : null
+    if (findable === false) this.log.warn(`"${name}" is stored on ${stored} ${stored === 1 ? 'host' : 'hosts'} but NOT yet findable from other devices: no index-holding host took the updated index. It is kept on this device and uploaded again with the next write or \`repair\`; keep this device (or browser tab) until then.`)
+    return { entry, sampled, stored, indexed, findable, results: res.map((r) => ({ backend: r.backend.name, ok: r.ok, error: r.error?.message })) }
   }
 
-  /** Read from the first healthy backend; fall back to the next on any failure. */
-  async get (name) {
+  /**
+   * Read from the first healthy backend; fall back to the next on any failure. `diverged`: the
+   * backends known to hold a version the index does not know (seen now, or by a check since the
+   * note's last update). `from`: read that backend's copy whatever its version (still decrypted
+   * and authenticated), to recover a DIVERGED one.
+   */
+  async get (name, { from } = {}) {
     name = c.normalizeName(name)
     const index = await this.mergedIndex()
     const entry = index.notes[name]
     const id = entry?.id ?? await c.blobIdForName(this.keys, name)
+    if (from) {
+      const b = this.backends.find((x) => x.name === from)
+      if (!b) throw new Error(`no backend called "${from}"`)
+      const copy = await this.readCopy(b, id, entry)
+      if (!copy.plaintext) throw new Error(`${from}: ${copy.status}${copy.detail ? ` (${copy.detail})` : ''}`)
+      return { bytes: copy.plaintext, from, entry, status: copy.status, problems: [], diverged: [] }
+    }
+    const since = Date.parse(entry?.updated ?? '') || 0
+    const diverged = new Set(Object.entries(index.health?.[name] ?? {})
+      .filter(([bn, h]) => h.status === 'diverged' && Date.parse(h.last_checked) >= since && this.backends.some((x) => x.name === bn)).map(([bn]) => bn))
     // not in the index: still try, a note put after the last index sync is found by its name
     if (!entry) this.log.debug(`"${name}" is not in the index; trying anyway, sha256 cannot be verified`)
     const problems = []
@@ -403,13 +444,17 @@ export class Overkill {
       if (status.status === STATUS.OK) {
         if (!entry) this.log.warn(`"${name}" is not in the index (written after the last index sync?); read it by name, its sha256 cannot be checked`)
         for (const p of problems) this.log.warn(`${p.backend}: ${p.status}${p.detail ? ` (${p.detail})` : ''}, used ${b.name} instead`)
+        const other = this.backends.map((x) => x.name).filter((n) => diverged.has(n))
+        if (other.length) this.log.warn(`"${name}": ${other.join(', ')} ${other.length === 1 ? 'holds' : 'hold'} a different version that the index does not know (maybe newer, from a device whose index update did not arrive). \`get "${name}" --from ${other[0]}\` reads it; put it again to keep it.`)
         await this.keepLedger(index).catch((err) => this.log.debug(`ledger: ${err.message}`))
-        return { bytes: status.plaintext, from: b.name, entry, problems }
+        return { bytes: status.plaintext, from: b.name, entry, problems, diverged: other }
       }
+      if (status.status === STATUS.DIVERGED) diverged.add(b.name)
       problems.push({ backend: b.name, status: status.status, detail: status.detail })
     }
     await this.keepLedger(index).catch((err) => this.log.debug(`ledger: ${err.message}`))
     const why = problems.map((p) => `${p.backend} ${p.status}`).join(', ')
+    if (entry && diverged.size) throw new Error(`no copy of "${name}" matches the index (${why}); \`get "${name}" --from ${[...diverged][0]}\` reads a version the index does not know`)
     if (entry) throw new Error(`no healthy copy of "${name}" (${why})`)
     if (problems.every((p) => p.status === STATUS.MISSING)) throw new Error(`no note called "${name}". \`super-secret-notes ls\` lists your notes.`)
     throw new Error(`no note called "${name}" in the index, and no backend had a readable copy (${why})`)
@@ -446,7 +491,9 @@ export class Overkill {
       throw err
     }
     if (entry && await c.sha256Hex(plaintext) !== entry.sha256) {
-      return { status: STATUS.STALE, detail: 'decrypts fine but is not the latest version' }
+      // only a version the index recorded as replaced is safe to overwrite
+      if (entry.superseded?.includes(await c.sha256Hex(blob))) return { status: STATUS.STALE, detail: 'decrypts fine but is an older version', plaintext, blob }
+      return { status: STATUS.DIVERGED, detail: 'decrypts fine but is a version the index does not know (maybe newer); left as it is', plaintext, blob }
     }
     return { status: STATUS.OK, plaintext, blob }
   }
@@ -460,7 +507,8 @@ export class Overkill {
     // with index_sync manual/never the remote index copies are not expected to be current
     const indexRes = this.remoteIndex ? await this.readIndexes() : []
     const good = indexRes.filter((r) => r.ok && r.value)
-    const merged = this.remoteIndex ? c.mergeIndexes(...good.map((r) => r.value)) : await this.mergedIndex()
+    // this device's copy is merged in: index copies that lack its writes are STALE, so repair uploads them
+    const merged = this.remoteIndex ? c.mergeIndexes(...good.map((r) => r.value), await this.localIndex().catch(() => null)) : await this.mergedIndex()
     await this.learnLocators(merged)
     const mergedJson = JSON.stringify(sortNotes(merged))
 
@@ -517,9 +565,16 @@ export class Overkill {
     return report
   }
 
-  /** Re-upload missing, corrupt or stale copies from a healthy one. */
+  /**
+   * Re-upload missing, corrupt or stale copies from a healthy one. DIVERGED copies are never
+   * overwritten (they may be newer than the index); `diverged` lists them.
+   */
   async repair (report) {
-    return this.reupload(report ?? await this.check(), (x) => x.status !== STATUS.OK)
+    report ??= await this.check()
+    const res = await this.reupload(report, (x) => x.status !== STATUS.OK && x.status !== STATUS.DIVERGED)
+    const diverged = []
+    for (const [name, copies] of Object.entries(report.notes)) for (const x of copies) if (x.status === STATUS.DIVERGED) diverged.push(`${name} on ${x.backend}`)
+    return { ...res, diverged }
   }
 
   /**

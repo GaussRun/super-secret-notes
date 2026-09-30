@@ -83,7 +83,10 @@ const shaOf = (url) => /([0-9a-f]{64})(?:\.[a-z0-9]+)?$/.exec(new URL(url).pathn
 // server-chosen addresses: holds notes and vault.age, never the index (docs/OVERKILL.md)
 export const addressing = 'locator'
 
-export function create (cfg, ctx, { fetchImpl = globalThis.fetch } = {}) {
+// one HTTP request, body included; the store's per-host deadline does not cover deletes
+export const REQUEST_TIMEOUT_MS = 60_000
+
+export function create (cfg, ctx, { fetchImpl = globalThis.fetch, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const base = cfg.url.replace(/\/+$/, '')
   // kept in secrets.ovk, like the paste locators
   const local = locatorState(ctx, cfg.name)
@@ -105,9 +108,19 @@ export function create (cfg, ctx, { fetchImpl = globalThis.fetch } = {}) {
     await local.write({ paths: state })
   }
   const reason = (res) => res.headers.get('x-reason') ?? `HTTP ${res.status}`
+  // fetch plus reading the body (`read(res)`), under one deadline
+  async function request (url, init, read = (res) => res) {
+    const signal = AbortSignal.timeout(requestTimeoutMs)
+    try {
+      return await read(await fetchImpl(url, { ...init, signal }))
+    } catch (err) {
+      if (signal.aborted) throw new Error(`${base}: no answer in ${requestTimeoutMs} ms`)
+      throw err
+    }
+  }
 
   async function remove (sha) {
-    const res = await fetchImpl(`${base}/${sha}`, { method: 'DELETE', headers: { Authorization: authHeader(secret, 'delete', sha, base) } })
+    const res = await request(`${base}/${sha}`, { method: 'DELETE', headers: { Authorization: authHeader(secret, 'delete', sha, base) } })
     if (!res.ok && res.status !== 404) logger.debug(`${cfg.name}: could not delete old blob ${sha}: ${reason(res)}`)
   }
 
@@ -125,13 +138,12 @@ export function create (cfg, ctx, { fetchImpl = globalThis.fetch } = {}) {
       const s = await load()
       const sealed = await sealBlob(key, bytes)
       const sha = await sha256Hex(sealed)
-      const res = await fetchImpl(`${base}/upload`, {
+      const { res, desc } = await request(`${base}/upload`, {
         method: 'PUT',
         headers: { Authorization: authHeader(secret, 'upload', sha, base), 'Content-Type': 'application/octet-stream', 'X-SHA-256': sha },
         body: sealed
-      })
+      }, async (res) => ({ res, desc: res.ok ? await res.json().catch(() => ({})) : null }))
       if (!res.ok) throw new Error(`${base} refused the upload: ${reason(res)}`)
-      const desc = await res.json().catch(() => ({}))
       if (desc.sha256 && desc.sha256 !== sha) throw new Error(`${base} stored sha256 ${desc.sha256}, expected ${sha}`)
       const old = s[rel]
       s[rel] = { url: `${base}/${sha}`, at: new Date().toISOString() }
@@ -152,10 +164,9 @@ export function create (cfg, ctx, { fetchImpl = globalThis.fetch } = {}) {
       const loc = (await load())[rel]
       if (!loc || !key) return null
       const sha = shaOf(loc.url)
-      const res = await fetchImpl(`${base}/${sha}`)
+      const { res, body } = await request(`${base}/${sha}`, {}, async (res) => ({ res, body: res.ok ? new Uint8Array(await res.arrayBuffer()) : null }))
       if (res.status === 404) return null
       if (!res.ok) throw new Error(`${base}: ${reason(res)}`)
-      const body = new Uint8Array(await res.arrayBuffer())
       if (await sha256Hex(body) !== sha) throw corrupt(`${base} served bytes whose sha256 is not ${sha}`)
       try {
         return await openBlob(key, body)
@@ -181,7 +192,7 @@ export function create (cfg, ctx, { fetchImpl = globalThis.fetch } = {}) {
     async dropPath (rel) {
       const s = await load()
       if (!s[rel]) return false
-      if (secret) await remove(new URL(s[rel].url).pathname.split('/').pop().replace(/\..*$/, ''))
+      if (secret) await remove(new URL(s[rel].url).pathname.split('/').pop().replace(/\..*$/, '')).catch((err) => logger.debug(`${cfg.name}: could not delete ${rel} blob: ${err.message}`))
       delete s[rel]
       await save()
       return true

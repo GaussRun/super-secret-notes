@@ -44,7 +44,8 @@ export function deadBackends ({ index, backends, cache, created = null, now = ne
   for (const cfg of backends) {
     if (!['privatebin', 'cryptpad', 'nostr', 'blossom'].includes(cfg.type)) continue
     const entries = Object.values(health).map((perBackend) => perBackend?.[cfg.name]).filter(Boolean)
-    if (!entries.length || entries.some((e) => e.status === 'ok')) continue
+    // a host that serves a readable copy of any version is alive (a DIVERGED copy must stay reachable)
+    if (!entries.length || entries.some((e) => ['ok', 'stale', 'diverged'].includes(e.status))) continue
     const lastOk = entries.map((e) => e.last_ok).filter(Boolean).sort().at(-1) ?? null
     if (lastOk && now - Date.parse(lastOk) < days * DAY) continue
     if (!lastOk && created && now - Date.parse(created) < days * DAY) continue

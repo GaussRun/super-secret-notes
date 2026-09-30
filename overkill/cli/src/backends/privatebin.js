@@ -98,12 +98,15 @@ export function parseLocator (locator) {
 // server-chosen addresses: holds notes and vault.age, never the index (docs/OVERKILL.md)
 export const addressing = 'locator'
 
+// one HTTP request, body included; the store's per-host deadline does not cover deletes
+export const REQUEST_TIMEOUT_MS = 60_000
+
 /**
  * `browser`: send CORS simple requests (Content-Type text/plain, Accept application/json, no
  * X-Requested-With and no User-Agent). PrivateBin answers no preflight, but it detects a JSON
  * client by that Accept header and parses the body as JSON whatever its Content-Type.
  */
-export function create (cfg, ctx, { browser = false } = {}) {
+export function create (cfg, ctx, { browser = false, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const base = cfg.url.replace(/\/+$/, '')
   // kept in secrets.ovk: the URLs carry the paste keys, and the tokens allow deleting
   const local = locatorState(ctx, cfg.name)
@@ -138,13 +141,20 @@ export function create (cfg, ctx, { browser = false } = {}) {
   }
 
   async function apiText (url, init = {}) {
-    const res = await fetch(url, {
-      ...init,
-      headers: browser
-        ? { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'text/plain' } : {}) }
-        : { 'User-Agent': UA, Accept: 'application/json', 'X-Requested-With': 'JSONHttpRequest', ...(init.body ? { 'Content-Type': 'application/json' } : {}) }
-    })
-    return { res, text: await res.text() }
+    const signal = AbortSignal.timeout(requestTimeoutMs)
+    try {
+      const res = await fetch(url, {
+        ...init,
+        signal,
+        headers: browser
+          ? { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'text/plain' } : {}) }
+          : { 'User-Agent': UA, Accept: 'application/json', 'X-Requested-With': 'JSONHttpRequest', ...(init.body ? { 'Content-Type': 'application/json' } : {}) }
+      })
+      return { res, text: await res.text() }
+    } catch (err) {
+      if (signal.aborted) throw new Error(`${base}: no answer in ${requestTimeoutMs} ms`)
+      throw err
+    }
   }
 
   async function api (url, init = {}) {
@@ -267,9 +277,15 @@ export function create (cfg, ctx, { browser = false } = {}) {
     /** Adopt locators from the merged index. index.ovk is never in there (it cannot point to itself). */
     async learnLocators (map = {}) {
       const s = await load()
+      const o = await loadOwned()
+      // creation time of a paste, from the vault's paste list (0: unknown)
+      const made = (url) => Date.parse(o[parseLocator(url).id]?.at ?? '') || 0
       let changed = false
       for (const [p, url] of Object.entries(map)) {
         if (p === paths.index || s[p]?.url === url) continue
+        // a paste this machine made after the one the index names stays: that index went up
+        // before this paste landed (a put after its deadline), and the older paste is deleted
+        if (s[p]?.deletetoken && made(s[p].url) > made(url)) continue
         s[p] = { url } // no deletetoken: another device uploaded it
         changed = true
       }

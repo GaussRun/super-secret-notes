@@ -40,6 +40,9 @@ export function ledgerStatus (index, backends, now = new Date(), { indexOn = bac
     return { backend: name, copies: keys.length, healthy, errors, unverified, oldestOk, nextExpiry }
   })
   for (const key of Object.keys(index.notes ?? {}).sort()) {
+    const since = Date.parse(index.notes[key].updated ?? '') || 0
+    const other = backends.filter((b) => health[key]?.[b]?.status === 'diverged' && Date.parse(health[key][b].last_checked) >= since)
+    if (other.length) warnings.push(`DIVERGED: ${key} on ${other.join(', ')} is a version the index does not know (maybe newer); \`get "${key}" --from ${other[0]}\` reads it`)
     const ok = backends.filter((b) => health[key]?.[b]?.status === 'ok').length
     if (ok < 2) warnings.push(`AT RISK: ${key} has ${ok} known-healthy ${ok === 1 ? 'copy' : 'copies'}`)
   }

@@ -24,6 +24,7 @@ const color = process.stdout.isTTY && !process.env.NO_COLOR
 const paint = (code) => (s) => color ? `\x1b[${code}m${s}\x1b[0m` : s
 const green = paint(32)
 const red = paint(31)
+const yellow = paint(33)
 const bold = paint(1)
 
 async function readStdin () {
@@ -304,7 +305,7 @@ export function buildCli () {
         out()
       }
       await withStore(program.opts(), async (store, ctx) => {
-        const { entry, results, sampled } = await store.put(name, data, { sample: o.sample })
+        const { entry, results, sampled, findable } = await store.put(name, data, { sample: o.sample })
         const ok = results.filter((r) => r.ok).length
         out(`${name}: ${entry.size} bytes, ${ok}/${results.length} backends (${results.map((r) => `${r.backend} ${r.ok ? green('OK') : red('FAILED')}`).join(', ')})`)
         if (sampled.length) {
@@ -317,17 +318,20 @@ export function buildCli () {
           }
         }
         await publishDiscovery({ ...ctx, store })
-        if (ok < results.length) process.exitCode = 1
+        // not findable from other devices yet: the store has warned; the exit code says so too
+        if (ok < results.length || findable === false) process.exitCode = 1
       })
     })
 
   program.command('get <name>')
     .description('download, decrypt and verify a note (falls back across backends)')
     .option('-o, --output <file>', 'write to a file instead of stdout')
+    .option('--from <backend>', 'read the copy on this backend even if it is a version the index does not know (DIVERGED)')
     .action(async (name, o) => {
       await withStore(program.opts(), async (store) => {
-        const { bytes, from } = await store.get(name)
-        logger.info(`read "${name}" from ${from}, both layers and sha256 verified`)
+        const { bytes, from, status } = await store.get(name, { from: o.from })
+        if (o.from && status !== 'OK') logger.warn(`read "${name}" from ${from}: both layers verified, but it is ${status === 'STALE' ? 'an older version' : 'a version the index does not know'}; \`put\` it again to make it the current one`)
+        else logger.info(`read "${name}" from ${from}, both layers and sha256 verified`)
         if (o.output) await writeFile(o.output, bytes)
         else process.stdout.write(bytes)
       })
@@ -446,8 +450,9 @@ export function buildCli () {
     .option('--no-swap', 'keep long-dead PrivateBin/CryptPad/Nostr/Blossom backends instead of swapping them')
     .action(async (o) => {
       await withStore(program.opts(), async (store, ctx) => {
-        let { fixed, failed } = await store.repair()
+        let { fixed, failed, diverged } = await store.repair()
         for (const x of fixed) out(`${green('repaired')} ${x}`)
+        for (const x of diverged) out(`${yellow('left alone')} ${x}: a version the index does not know (maybe newer); read it with \`get --from\` and put it again to keep it`)
         if (o.swap) {
           const s = await swapDeadBackends({ store, cfg: ctx.cfg, home: ctx.home, created: ctx.vault.created, fixed })
           for (const x of s.swaps) out(`${green('swapped')} ${x.from} (${x.fromWhere}, dead) for ${x.to} (${x.toWhere})`)
@@ -462,7 +467,7 @@ export function buildCli () {
           }
         }
         for (const x of failed) out(`${red('could not repair')} ${x}`)
-        if (!fixed.length && !failed.length) out('Nothing to repair. Everything is fine. Suspiciously fine.')
+        if (!fixed.length && !failed.length && !diverged.length) out('Nothing to repair. Everything is fine. Suspiciously fine.')
         for (const hint of await replacementHints({ index: store.lastIndex, backends: ctx.cfg.backends, home: ctx.home, fixed, created: ctx.vault.created })) out(hint)
         if (failed.length) process.exitCode = 1
       })

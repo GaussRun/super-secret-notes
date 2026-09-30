@@ -54,6 +54,7 @@
 		swaps: string[];
 		indexLocal: boolean;
 		recordRelays: number | null;
+		findable: boolean | null;
 	} | null>(null);
 	let retrying = $state(false);
 	let retried = $state<{ fixed: string[]; failed: string[] } | null>(null);
@@ -145,14 +146,16 @@
 			const res = await vault.create({ name: vaultName, passphrase, generated: passphrase === generated ? generated : null, ephemeral: publicMode, replace: replacing && !publicMode, plan });
 			let note: string | null = null;
 			let results: { backend: string; ok: boolean; error?: string }[] = res.hosts;
+			let findable: boolean | null = null;
 			if (!skip) {
 				const put = await vault.put(noteName.trim(), noteText);
 				note = noteName.trim().normalize('NFC');
 				results = put.results;
+				findable = (put as { findable?: boolean | null }).findable ?? null;
 			}
 			// on a public computer the browser must not keep it
 			const savedToManager = publicMode ? false : await storeCredential(vaultName, passphrase);
-			done = { vaultName, passphrase, hosts: results.map((r) => ({ backend: r.backend, ok: r.ok, error: r.error })), note, savedToManager, swaps: res.swaps, indexLocal: res.indexLocal, recordRelays: res.recordRelays };
+			done = { vaultName, passphrase, hosts: results.map((r) => ({ backend: r.backend, ok: r.ok, error: r.error })), note, savedToManager, swaps: res.swaps, indexLocal: res.indexLocal, recordRelays: res.recordRelays, findable };
 			if (downloadKit) await saveKit().catch(() => {});
 		} catch (x) {
 			err = (x as Error).message;
@@ -177,6 +180,7 @@
 			if (done) {
 				done.hosts = copies.map((x: { backend: string; status: string; detail?: string }) => ({ backend: x.backend, ok: x.status === 'OK', error: x.detail }));
 				done.indexLocal = !now.index.some((x: { status: string }) => x.status === 'OK');
+				if (!done.indexLocal) done.findable = true;
 			}
 		} catch (x) {
 			err = (x as Error).message;
@@ -214,13 +218,16 @@
 				<p class="warn">Only {stored} copy so far. Everything stays encrypted in this browser; Retry copies it to the hosts that did not answer.</p>
 			</div>
 		{/if}
+		{#if done.findable === false && !done.indexLocal}
+			<p class="warn" data-testid="not-findable">"{done.note}" is stored on {stored} {stored === 1 ? 'host' : 'hosts'}, but not yet findable from other devices: no host that keeps the list of your notes took the update. Keep this tab open or save the recovery kit, and Retry.</p>
+		{/if}
 		{#if done.indexLocal}
 			<p class="warn" data-testid="index-local">No host that keeps the list of your notes (CryptPad, Nostr) answered: that list stays in this browser for now and is uploaded again with the next save or Retry.</p>
 		{/if}
 		{#if done.recordRelays === 0}
 			<p class="warn" data-testid="no-record">The recovery-by-name record reached no relay yet: keep the kit, and Retry later.</p>
 		{/if}
-		{#if failedHosts.length || done.indexLocal || done.recordRelays === 0}
+		{#if failedHosts.length || done.indexLocal || done.recordRelays === 0 || done.findable === false}
 			<button type="button" onclick={retry} disabled={retrying} data-testid="retry">{retrying ? 'Retrying...' : 'Retry now'}</button>
 			{#if retried}<p class="small" data-testid="retried">Retry: {retried.fixed.length} repaired, {retried.failed.length} still failing.</p>{/if}
 			{#if err}<p class="error-box" role="alert">{err}</p>{/if}

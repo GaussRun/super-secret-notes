@@ -374,9 +374,10 @@ class VaultState {
 		return r;
 	}
 
-	async get(name: string) {
+	/** `from`: read that backend's copy even if the index does not know it (a DIVERGED copy). */
+	async get(name: string, { from }: { from?: string } = {}) {
 		const t0 = performance.now();
-		const r = await this.store.get(name);
+		const r = await this.store.get(name, from ? { from } : {});
 		const ms = performance.now() - t0;
 		return { ...r, text: dec.decode(r.bytes), ms, hosts: await this.noteHosts(name) };
 	}

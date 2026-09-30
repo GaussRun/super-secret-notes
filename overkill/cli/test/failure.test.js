@@ -100,7 +100,8 @@ test('no index holder answers: the index stays local and a put still works on on
   assert.ok((await store.localIndex()).notes.lonely)
 })
 
-// A PrivateBin instance that answers posts only after `delay` ms (the paste is stored at once).
+// A PrivateBin instance that answers posts only after `delay` ms (the paste is stored at once);
+// `delay` can be changed on the returned object.
 async function slowPrivatebin (delay) {
   const http = await import('node:http')
   const pastes = new Map()
@@ -116,14 +117,15 @@ async function slowPrivatebin (delay) {
       }
       const id = c.toHex(c.randomBytes(8))
       pastes.set(id, { ...body, deletetoken: c.toHex(c.randomBytes(32)) })
-      return setTimeout(() => send({ status: 0, id, url: `/?${id}`, deletetoken: pastes.get(id).deletetoken }), delay)
+      return setTimeout(() => send({ status: 0, id, url: `/?${id}`, deletetoken: pastes.get(id).deletetoken }), srv.delay)
     }
     const id = new URL(req.url, 'http://x').searchParams.get('pasteid')
     const p = pastes.get(id)
     send(p ? { status: 0, id, ...p, meta: {} } : { status: 1, message: 'Document does not exist, has expired or has been deleted.' })
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  return { url: `http://127.0.0.1:${server.address().port}`, pastes, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve) }) }
+  const srv = { delay, url: `http://127.0.0.1:${server.address().port}`, pastes, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve) }) }
+  return srv
 }
 
 test('a paste that lands after the deadline: kept with its locator on a backend in use, deleted on a replaced one', async () => {
@@ -155,5 +157,70 @@ test('a paste that lands after the deadline: kept with its locator on a backend 
     assert.ok(lines.some((l) => /pb-late: vault.age arrived after the deadline on a host this vault no longer uses; deleted it again/.test(l)))
   } finally {
     await slow.close()
+  }
+})
+
+test('a note paste that lands after the deadline: the index never sends anyone back to the deleted old paste', async () => {
+  const slow = await slowPrivatebin(0)
+  try {
+    const { ctx, make } = await localBackends([])
+    const { logger } = recorder()
+    const k = await keys()
+    const cache = { blob: null, write: async (b) => { cache.blob = b }, read: async () => cache.blob }
+    const device = (home = ctx) => new Overkill({ backends: [make('a'), createBackend({ name: 'pb-slow', type: 'privatebin', url: slow.url }, home)], ...k, logger, indexCache: cache, hostTimeoutMs: 200 })
+    const s1 = device()
+    await s1.uploadVault()
+    await s1.writeIndex(c.emptyIndex())
+    await s1.put('diary', 'v1', { sample: false })
+    // v2's paste lands after the deadline, after the index (still naming v1's paste) went up;
+    // then the adapter deletes v1's paste
+    slow.delay = 600
+    const r = await s1.put('diary', 'v2', { sample: false })
+    assert.equal(r.results[1].ok, false)
+    await s1.close()
+    slow.delay = 0
+
+    // another machine only has the remote index: it must name v2's paste
+    const saved = cache.blob
+    cache.blob = null
+    const other = { root: 'ovk', home: await mkdtemp(path.join(os.tmpdir(), 'ssn-other-')) }
+    const elsewhere = await device(other).check({ updateLedger: false })
+    assert.deepEqual(elsewhere.notes.diary.map((x) => [x.backend, x.status]), [['a', 'OK'], ['pb-slow', 'OK']])
+    // this machine, next run: its own locator must not be replaced by a dead one from the index
+    cache.blob = saved
+    const again = await device().check()
+    assert.deepEqual(again.notes.diary.map((x) => [x.backend, x.status]), [['a', 'OK'], ['pb-slow', 'OK']])
+  } finally {
+    await slow.close()
+  }
+})
+
+test('PrivateBin learnLocators keeps a paste this machine made after the one an index names', async () => {
+  const srv = await slowPrivatebin(0)
+  try {
+    const { ctx } = await localBackends([])
+    const pb = createBackend({ name: 'pb', type: 'privatebin', url: srv.url }, ctx)
+    const rel = c.paths.note('ab'.repeat(16))
+    await pb.put(rel, new Uint8Array([1]))
+    const oldUrl = (await pb.getLocators())[rel]
+    const oldPastes = await pb.ownedPastes() // what an index written now would carry
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await pb.put(rel, new Uint8Array([2])) // replaces (and deletes) the first paste
+    const newUrl = (await pb.getLocators())[rel]
+    assert.notEqual(newUrl, oldUrl)
+    // an index written before the second put landed (say its update was lost with the tab)
+    await pb.adoptPastes(oldPastes)
+    await pb.learnLocators({ [rel]: oldUrl })
+    assert.equal((await pb.getLocators())[rel], newUrl)
+    assert.deepEqual(await pb.get(rel), new Uint8Array([2]))
+    // a newer paste made elsewhere is still learned
+    const other = createBackend({ name: 'pb', type: 'privatebin', url: srv.url }, { root: 'ovk', home: await mkdtemp(path.join(os.tmpdir(), 'ssn-pb-other-')) })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await other.put(rel, new Uint8Array([3]))
+    await pb.adoptPastes(await other.ownedPastes())
+    await pb.learnLocators(await other.getLocators())
+    assert.deepEqual(await pb.get(rel), new Uint8Array([3]))
+  } finally {
+    await srv.close()
   }
 })

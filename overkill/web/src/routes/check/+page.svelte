@@ -78,7 +78,14 @@
 		}
 	});
 
-	const cls = (s: string) => (s === 'OK' ? 'ok' : s === 'STALE' ? 'warn' : 'bad');
+	// DIVERGED: a version the index does not know (maybe newer, from another device); repair leaves it alone
+	const cls = (s: string) => (s === 'OK' ? 'ok' : s === 'STALE' || s === 'DIVERGED' ? 'warn' : 'bad');
+	const shown = (s: string) => (s === 'DIVERGED' ? 'DIFFERS' : s);
+	const differs = $derived.by(() => {
+		if (!report) return 0;
+		const all = [...report.vault, ...report.index, ...Object.values(report.notes as Record<string, { status: string }[]>).flat()];
+		return all.filter((x) => x.status === 'DIVERGED').length;
+	});
 	const cell = (copies: Copy[], b: string) => copies.find((x) => x.backend === b);
 </script>
 
@@ -105,7 +112,8 @@
 
 	{#if report && totals}
 		<div class="panel verdict {allGood ? 'good' : lost.length ? 'bad-panel' : 'repair-panel'}" data-testid="check-summary">
-			<div class="big mono">{allGood ? 'ALL COPIES HEALTHY' : lost.length ? `NO HEALTHY COPY OF ${lost.join(', ').toUpperCase()}` : `${totals.total - totals.healthy} ${totals.total - totals.healthy === 1 ? 'copy needs' : 'copies need'} repair`}</div>
+			<div class="big mono">{allGood ? 'ALL COPIES HEALTHY' : lost.length ? `NO HEALTHY COPY OF ${lost.join(', ').toUpperCase()}` : totals.total - totals.healthy - differs > 0 ? `${totals.total - totals.healthy - differs} ${totals.total - totals.healthy - differs === 1 ? 'copy needs' : 'copies need'} repair` : `${differs} ${differs === 1 ? 'copy differs' : 'copies differ'}`}</div>
+			{#if differs}<div class="small" data-testid="check-differs">{differs} {differs === 1 ? 'copy is' : 'copies are'} a version the index does not know (DIFFERS: maybe newer, from another device). Repair leaves {differs === 1 ? 'it' : 'them'} alone; open the note to look at it and keep the version you want.</div>{/if}
 			<div class="mono">{totals.healthy}/{totals.total} copies healthy{allGood ? '. Gloriously redundant.' : lost.length ? '. Nothing here can rebuild those; try again later, or restore from another device.' : '. Normal for free volunteer hosts: every note still has a healthy copy, and Repair re-uploads the rest.'}</div>
 		</div>
 		<div class="panel table-scroll">
@@ -121,7 +129,7 @@
 								{@const x = cell(copies, b)}
 								<td class={x ? cls(x.status) : 'muted'} data-testid="cell-{label}-{b}">
 									{#if x}
-										<span class="mono state">{x.status}</span>
+										<span class="mono state">{shown(x.status)}</span>
 										{#if x.detail}<div class="detail">{x.detail}</div>{/if}
 										{#if x.expires}<div class="detail">{x.assumed ? 'republish by' : 'expires'} {x.expires.toISOString().slice(0, 10)}</div>{/if}
 									{:else}

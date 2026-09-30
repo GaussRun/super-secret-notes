@@ -56,6 +56,9 @@
 	let entry = $state<{ id: string; updated: string } | null>(null);
 	let problems = $state<{ backend: string; status: string }[]>([]);
 	let hosts = $state<NoteHost[]>([]);
+	// hosts holding a version the index does not know (maybe newer, from another device)
+	let diverged = $state<string[]>([]);
+	let other = $state<{ backend: string; text: string } | null>(null);
 	let savedOn = $state<{ ok: number; total: number } | null>(null);
 	let err = $state('');
 	let busy = $state(false);
@@ -79,6 +82,8 @@
 				entry = r.entry ?? null;
 				problems = r.problems;
 				hosts = r.hosts;
+				diverged = (r as { diverged?: string[] }).diverged ?? [];
+				other = null;
 				savedOn = null;
 			},
 			(x) => (err = (x as Error).message)
@@ -94,6 +99,37 @@
 			saved = text;
 			entry = r.entry;
 			savedOn = { ok: r.results.filter((x) => x.ok).length, total: r.results.length };
+		} catch (x) {
+			err = (x as Error).message;
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function viewOther(backend: string) {
+		err = '';
+		try {
+			const r = await vault.get(name, { from: backend });
+			other = { backend, text: r.text };
+		} catch (x) {
+			err = (x as Error).message;
+		}
+	}
+
+	// keeping a version stores it again everywhere (the other copy is then replaced)
+	async function keep(version: string) {
+		busy = true;
+		err = '';
+		activity.clear();
+		try {
+			const r = await vault.put(name, version);
+			text = version;
+			saved = version;
+			entry = r.entry;
+			savedOn = { ok: r.results.filter((x) => x.ok).length, total: r.results.length };
+			diverged = [];
+			other = null;
+			hosts = await vault.noteHosts(name);
 		} catch (x) {
 			err = (x as Error).message;
 		} finally {
@@ -148,6 +184,20 @@
 			{/if}
 		</div>
 		{#if readFrom}{@const src = vault.hostOf(readFrom.backend)}<p class="muted small" data-testid="note-source" data-backend={readFrom.backend}>Read from {src ? `${typeName(src.type)} (${baseUrl(src.where) ?? src.where})` : 'a host'} in {(readFrom.ms / 1000).toFixed(1)} s, both layers and the sha256 verified.</p>{/if}
+		{#if diverged.length}
+			<div class="panel diverged" data-testid="diverged">
+				{#each diverged as d (d)}
+					{@const h = vault.hostOf(d)}
+					<p class="warn">Another version exists on {h ? `${typeName(h.type)} (${baseUrl(h.where) ?? h.where})` : 'another host'}: maybe newer, from a device whose update did not reach the index.</p>
+					<button class="secondary" onclick={() => viewOther(d)} data-testid="view-other">View it</button>
+					<button class="secondary" onclick={() => keep(saved ?? text)} disabled={busy} data-testid="keep-this">Keep this one</button>
+				{/each}
+				{#if other}
+					<pre class="raw other" data-testid="other-text">{other.text}</pre>
+					<button onclick={() => keep(other!.text)} disabled={busy} data-testid="keep-other">Keep that one instead</button>
+				{/if}
+			</div>
+		{/if}
 		{#if problems.length}<p class="warn small">Skipped on the way: {problems.map((p) => { const h = vault.hostOf(p.backend); return `${h ? `${typeName(h.type)} ${baseUrl(h.where) ?? ''}` : 'a host'} ${p.status}`; }).join(', ')}.</p>{/if}
 		{#if entry}<p class="muted small">Updated {entry.updated}. Blob id <span class="id">{entry.id}</span></p>{/if}
 

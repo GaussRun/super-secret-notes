@@ -133,7 +133,10 @@ provisions the default backends, uploads, and prints the recovery kit. No config
 - Best effort, never all-or-nothing: every host is tried in parallel, each call with its own
   deadline (CLI 120 s; web 20 s, CryptPad 45 s for its first-use registration, Nostr 60 s for
   chunked notes). A host that fails or times out is marked FAILED in the log and the health
-  ledger, and the operation goes on.
+  ledger, and the operation goes on. Calls outside that deadline (deleting a replaced paste or
+  blob, dropping a path) are bounded too: every PrivateBin and Blossom HTTP request, body
+  included, gives up after 60 s, and a CLI-driven backend (proton-drive, rclone) gets SIGTERM
+  at its limit and SIGKILL 5 s later.
 - Success at 2 copies: vault.age and each note count as stored once `MIN_COPIES` = 2 hosts hold
   them ("Stored on N hosts; M failed (will retry)"). With 1 copy the work is kept (the vault
   and the index stay encrypted on the device) and a clear warning offers "Retry now" (web) or
@@ -145,7 +148,32 @@ provisions the default backends, uploads, and prints the recovery kit. No config
   out. The stand-in goes into the config like any other backend. Later failures (put, check)
   are left to `repair`, which swaps dead backends (docs: overkill/cli/docs/HOSTS.md).
 - The index: if no index-holding host (CryptPad, Nostr) takes it, it stays on the device (as
-  with `index_sync` manual) with a warning, and every later write uploads it again.
+  with `index_sync` manual) with a warning, and every later write uploads it again: reads of the
+  index (`put`, `get`, `ls`, `check`) merge this device's copy into the remote ones, so the next
+  write, or `repair` (index copies lacking those writes are STALE), carries them up.
+- A put that answers after its deadline is kept (it counted as FAILED for that operation). On a
+  paste host it replaces the previous paste, which the adapter deletes, while the index that
+  already went up still names the old one; so the index is written again with the new locator
+  (index writes run one at a time), and an adapter never swaps a paste it made for an older
+  one an index names (paste creation times, `pastes` in format history 10).
+- Stored is not the same as findable: 2 copies on paste hosts (PrivateBin, Blossom) are useless
+  to another device until an index holder has the index with their locators. `put` writes the
+  index before it returns and reports `indexed` (remote index copies written; null with
+  `index_sync` manual/never) and `findable` (`indexed > 0`, null when not synced). With
+  `findable: false` it warns separately ("stored on N hosts but NOT yet findable from other
+  devices ... keep this device"), and the CLI exits with status 1.
+- Never destroy a version the index does not know. Two devices can disagree: a put can reach some
+  hosts while its index update reaches none, so another device (older index) sees the newer copies
+  as "not the index's version". `repair` therefore overwrites only copies that are MISSING,
+  CORRUPT, ERROR, or STALE in the strict sense: the copy's blob hash is one the index entry lists
+  as replaced (`superseded`, format history 16). Any other copy that decrypts and authenticates
+  but differs is DIVERGED: `check` and `status` report it, `repair` leaves it alone and lists it,
+  `get` names it, and `get <name> --from <backend>` reads it so the user can pick and `put` it
+  again. Why not "newest wins" with a version counter inside the encrypted blob: that changes the
+  blob format, every existing blob would lack it, and a wrong clock or counter on one device would
+  still let it silently replace a newer version; keeping every unknown version costs at most a
+  warning. The price: copies written before blob hashes were recorded that are merely old show
+  as DIVERGED until the note is written again.
 - The recovery record goes to every relay that answers; recover-by-name needs at least 1, so
   0 gives a clear warning (the recovery kit still works).
 
@@ -172,7 +200,7 @@ Per note, per backend, add to the index:
 "health": {"<note name or _vault/_index>": {"<backend name>": {
   "last_ok": "<ISO 8601, last successful download + full decrypt/verify>",
   "last_checked": "<ISO 8601, last attempt>",
-  "status": "ok | missing | corrupt | stale | error",
+  "status": "ok | missing | corrupt | stale | diverged | error",
   "expires": "<ISO 8601 or null, from host metadata e.g. PrivateBin time_to_live>"}}}
 ```
 - Merge rule across backends: per field, keep the entry with the newest `last_checked`; `last_ok` takes the max.
@@ -248,7 +276,8 @@ Additions and clarifications made after the first version of the format. Both cl
 5. **Health ledger details** (implements "Health ledger + sampling on every write"):
    - Only a real download plus full verification sets `last_ok`. An upload alone records nothing
      (a failed upload records `error`), so a fresh copy counts as unverified until sampled or checked.
-   - `status` values are the check states in lowercase; `stale` = decrypts but older than the index.
+   - `status` values are the check states in lowercase; `stale` = decrypts but older than the index;
+     `diverged` = decrypts but is a version the index does not know (format history 16).
    - `check` writes the refreshed ledger to the backends whose index copy was readable (OK or
      STALE); missing or corrupt index copies are left for `repair` to report and fix.
    - Sampling ties (same `last_checked`, including never checked) are broken at random.
@@ -383,6 +412,22 @@ Additions and clarifications made after the first version of the format. Both cl
       the chain if lost). No key or API key is written anywhere.
     Vectors: `fileverse` in `overkill/cli/test/vectors.json` (from `derivation.master_hex`).
 
+16. **Blob hashes in note entries** (optional, both clients write them from this version on):
+    ```json
+    "notes": {"<name>": {"id": "...", "sha256": "...", "size": 1, "updated": "...",
+      "blob_sha256": "<hex sha256 of the uploaded OVK1 blob>",
+      "superseded": ["<blob_sha256 of versions this one replaced, newest first>"]}}
+    ```
+    - `blob_sha256` is over the encrypted blob as uploaded (the fresh nonces make every put
+      unique, so a later put of the same text is still a different version). `superseded` is the
+      previous entry's `blob_sha256` followed by its `superseded`, without duplicates or the
+      current hash, at most 16; omitted when empty.
+    - A copy whose plaintext sha256 differs from `sha256` is STALE only if its blob hash is in
+      `superseded`; otherwise it is DIVERGED and nothing overwrites it (see "Failure handling").
+      Entries without these fields (older clients) make every differing copy DIVERGED.
+    - Merge is unchanged: the winning entry is taken whole, fields included. After two devices
+      wrote different versions concurrently, the losing version's copies are DIVERGED, not STALE.
+
 Clarifications (no format change):
 
 - `age_identity` must be generated as X25519 explicitly (`generateX25519Identity()` in
@@ -398,5 +443,6 @@ Clarifications (no format change):
 - vault.age is binary age; readers also accept armored. `master` is standard padded base64 (44 chars).
   `updated` is written with `toISOString()` and compared with `Date.parse`. `size` is the plaintext
   byte length.
-- `check` also reports `STALE` for a copy that decrypts fine but whose sha256 does not match the
-  merged index (an older version), and for an index copy that lacks entries or has older ones.
+- `check` reports `STALE` for a note copy that decrypts fine, does not match the merged index, and
+  is one the index recorded as replaced (format history 16), and for an index copy that lacks
+  entries or has older ones. A differing note copy the index does not know is `DIVERGED`.

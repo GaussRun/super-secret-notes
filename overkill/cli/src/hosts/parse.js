@@ -4,14 +4,40 @@
 const HTML_ENTITIES = { '&amp;': '&', '&#x2F;': '/', '&#47;': '/', '&quot;': '"', '&#39;': "'", '&lt;': '<', '&gt;': '>' }
 const unescapeHtml = (s) => s.replace(/&(?:amp|#x2F|#47|quot|#39|lt|gt);/g, (m) => HTML_ENTITIES[m])
 
+// IPv4 ranges that are not the public internet: this host, private networks, carrier NAT,
+// link-local (cloud metadata at 169.254.169.254), benchmarking, multicast and reserved
+const v4 = (dotted) => dotted.split('.').reduce((acc, x) => acc * 256 + Number(x), 0)
+const PRIVATE_V4 = ['0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12',
+  '192.0.0.0/24', '192.168.0.0/16', '198.18.0.0/15', '224.0.0.0/3']
+  .map((cidr) => { const [net, bits] = cidr.split('/'); return { size: 2 ** (32 - Number(bits)), net: v4(net) } })
+// names that only resolve inside a local network (RFC 6761, 6762, 8375, and common private suffixes)
+const LOCAL_NAME = /(^|\.)(localhost|local|internal|lan|home\.arpa|localdomain|intranet|corp)$/i
+
+/**
+ * True for a host a directory must never send us to. The URL parser has already turned every
+ * IPv4 spelling (decimal, hex, octal) into dotted form. IPv6 literals are refused outright:
+ * public hosts are listed by name. Names are checked as written only: one that resolves to a
+ * private address (DNS rebinding) is out of scope for a CLI that probes public hosts.
+ */
+function internalHost (hostname) {
+  const h = hostname.replace(/\.$/, '')
+  if (h.startsWith('[')) return true
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+    const ip = v4(h)
+    return PRIVATE_V4.some(({ net, size }) => Math.floor(ip / size) === net / size)
+  }
+  return LOCAL_NAME.test(h)
+}
+
 /** Canonical form of a host URL for one backend type, or null when it cannot be one. */
 export function normalize (type, raw) {
   let u
   try { u = new URL(String(raw).trim()) } catch { return null }
+  // plain http/ws and 127.0.0.1 only for tests (OVERKILL_HOSTS_ALLOW_LOOPBACK=1), only on this machine
+  const local = process.env.OVERKILL_HOSTS_ALLOW_LOOPBACK === '1' && u.hostname === '127.0.0.1'
   // query strings and fragments are dropped: they are never part of a host address here
   if (u.username || u.password || /\.(onion|i2p)$/i.test(u.hostname) || !u.hostname.includes('.')) return null
-  // plain http/ws only for tests, and only on this machine
-  const local = process.env.OVERKILL_HOSTS_ALLOW_LOOPBACK === '1' && u.hostname === '127.0.0.1'
+  if (!local && internalHost(u.hostname)) return null
   if (type === 'nostr') {
     if (u.protocol !== 'wss:' && !(local && u.protocol === 'ws:')) return null
     return `${u.protocol}//${u.host.toLowerCase()}${u.pathname.replace(/\/+$/, '')}`
