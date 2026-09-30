@@ -1,0 +1,44 @@
+{
+  "name": "super-secret-notes",
+  "version": "0.1.0",
+  "description": "Super Secret Notes by GaussRun: double-encrypted notes, copied to several clouds. Overkill on purpose.",
+  "type": "module",
+  "bin": {
+    "super-secret-notes": "./bin/super-secret-notes.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "vendor:cryptpad": "scripts/vendor-cryptpad.sh"
+  },
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "@filen/sdk": "^0.4.2",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/base": "^2.4.0",
+    "age-encryption": "^0.3.1",
+    "chainpad": "^5.3.1",
+    "chainpad-crypto": "^0.3.0",
+    "chainpad-listmap": "^1.2.0",
+    "chainpad-netflux": "^1.3.1",
+    "commander": "^15.0.0",
+    "json.sortify": "^2.2.2",
+    "megajs": "^1.3.10",
+    "netflux-websocket": "^1.3.2",
+    "nostr-tools": "^2.25.2",
+    "nthen": "^0.2.1",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "winston": "^3.19.0",
+    "ws": "^8.22.0",
+    "yjs": "^13.6.33"
+  },
+  "optionalDependencies": {
+    "@fileverse/api": "1.0.10",
+    "permissionless": "0.3.7",
+    "viem": "^2.56.9"
+  }
+}

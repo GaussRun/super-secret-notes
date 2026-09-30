@@ -1,0 +1,38 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+# Playwright
+test-results
+
+# Local relay folder and test data (ciphertext only, still not for git)
+.data/
+/test-results
+/playwright-report
+/build-test
+/test-results
+/playwright-report
+# vitest browser-mode failure artifacts
+.vitest-attachments/
+__screenshots__/
+/.site-assets
+/build-shot

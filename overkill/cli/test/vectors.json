@@ -1,0 +1,493 @@
+{
+  "description": "Overkill Notes format v1 test vectors (docs/OVERKILL.md). Hex is lowercase.",
+  "derivation": {
+    "master_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "master_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+    "k_aes_hex": "8d3c0490b9d49e6c0351ef26fe1fef386173b550b92bbeb997f9492c98395272",
+    "k_name_hex": "e7cc32ce2a6ac9df65bd742a5f55940dce0552d01f52796ee3ebf7d3705f8165",
+    "k_nostr_hex": "c39ac3f7af9291a56b589c6cfa06813e3bc2a8200dc12d89d675e38e2b8bbd1a",
+    "k_blossom_hex": "6e01945e91d17dfce448b2053bcb37030c1f335737473cf7005fff510a60f328",
+    "k_nostr_note": "HKDF info \"overkill v1 nostr\"; only if that is 0 or >= the secp256k1 order, retry with \"overkill v1 nostr 1\", then \"overkill v1 nostr 2\", and so on",
+    "nostr_pubkey_hex": "8472241526f7852b67f6c557add3ae1fb3fc8726373b4d4b2146db852a7f2666",
+    "nostr_npub": "npub1s3ezg9fx77zjkelkc4t6m5awr7elepexxua56jepgmdc22nlyenq9gn8n6"
+  },
+  "blob_ids": [
+    {
+      "name": "groceries",
+      "blob_id": "168dc9f118e6cbe3c4bcaa5cd029464fcf5742738ab726792149c820fccf3595"
+    },
+    {
+      "name": "Groceries",
+      "blob_id": "4d93db4bacaa1a51a472e56e0d656777597db34c81710b588dac5ebf7b460d34"
+    },
+    {
+      "name": "Einkaufsliste für Oma 🥦",
+      "blob_id": "71fa5af9d4dea7a922d9f174af0753e153e63ec4240b5747464d4f960d0f5433"
+    },
+    {
+      "name": "Einkaufsliste für Oma 🥦",
+      "note": "NFD input; HMAC is over UTF-8 of the NFC form",
+      "blob_id": "71fa5af9d4dea7a922d9f174af0753e153e63ec4240b5747464d4f960d0f5433"
+    },
+    {
+      "name": "a/b/c.txt",
+      "blob_id": "71dcce188766768d25b1ad2b5a3c7120db124dccbab3a6bcd07353e0d1e6d74f"
+    },
+    {
+      "name": " ",
+      "blob_id": "c3e5dbe3c578923df4238f9e65648cec2ecfdf61efa16183d289e66d66844034"
+    }
+  ],
+  "aes_layer": {
+    "blob_id": "168dc9f118e6cbe3c4bcaa5cd029464fcf5742738ab726792149c820fccf3595",
+    "nonce_hex": "a0a1a2a3a4a5a6a7a8a9aaab",
+    "inner_hex": "6e6f74207265616c6c79206167652c206a75737420627974657320666f722074686520414553206c61796572",
+    "aad_hex": "4f564b3131363864633966313138653663626533633462636161356364303239343634666366353734323733386162373236373932313439633832306663636633353935",
+    "blob_hex": "4f564b31a0a1a2a3a4a5a6a7a8a9aaab1994d0a76cc09999fd762454913e6c08096201e9b03af7707677d691d4be0f62e88dba6292d3ff7a472ae84ae8f568b9e053bfd5affdd4e28ed37304"
+  },
+  "decrypt": {
+    "vault": {
+      "v": 1,
+      "age_identity": "AGE-SECRET-KEY-1GFPYYSJZGFPYYSJZGFPYYSJZGFPYYSJZGFPYYSJZGFPYYSJZGFPQ4EGAEX",
+      "master": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "created": "2026-09-29T00:00:00.000Z"
+    },
+    "age_recipient": "age1zvkyg2lqzraa2lnjvqej32nkuu0ues2s82hzrye869xeexvn73equnujwj",
+    "note": {
+      "name": "groceries",
+      "blob_id": "168dc9f118e6cbe3c4bcaa5cd029464fcf5742738ab726792149c820fccf3595",
+      "plaintext": "oat milk\nbananas\n1x tinfoil hat (extra thick)\n",
+      "blob_hex": "4f564b312810a39730788d535b22bfc3d404a1f760120f421f4f8af496264be9d53a1a84cedc3674eb6c21c4553f557e99f836a76a753f78efbeeb00399bb6a3b256d935d2cb4c38136312c40acc59d171c13f870e34a1483c88fda8cd5d8147d690cef1b612267216454c5e41b03bdc6d016ba50453ed350376dfd1290d44f6a7d9eb40e2fb05539993c3d9a9805f66eb9ba2c8e34c4423ef9b0dbe2cff27dbbc7fee985a37a9b09d92203faf94e42c9538bd5fc6d99158cf376e7734e8988b995209d428c42671810261a20f32489421cc9c75514ce10a38603be240db746f507e90f264d245d007f0b975f428a04f82c9c9a2afc2dd7da57813e1e8ba07d5a6394d97699e3fb31d9458d8fe1cdf9c02945e8fc90f"
+    },
+    "index": {
+      "plaintext": {
+        "v": 1,
+        "notes": {
+          "groceries": {
+            "id": "168dc9f118e6cbe3c4bcaa5cd029464fcf5742738ab726792149c820fccf3595",
+            "sha256": "c75e768838953126e150645eee3593ced2b399ba8c8c943a0d01eb2dee54b32f",
+            "size": 46,
+            "updated": "2026-09-29T12:00:00.000Z"
+          }
+        }
+      },
+      "blob_hex": "4f564b316dd5b8197914edb9792bb0b79b7de0d06cb23354c23f9ee00d1b9c12e89435027ea8d3b34a98d33c993e7a1438ea71d868aa4fb2a5828d707a02a658498d0a7009bbf78400efc7ee71a63b6266be7d562ae29d7d4428a7b0811b3f67fb74236fddaa3fbb14dcdc2091226db18570d41cb414eacaf3093f65a8d426a7ab92073da86726a232502488640472388ae4c0e9379c61cffa49756ba66312801c8d3cb6a43405dd8c24647f9bfe0d5e70adf680aac946fcb6efef068bde39cfb9b5ceab77b24da1f1cbd3dde06e3bfecd28b81cbc947934c624ac518cdf25c9a7791b0eb2b678113cfc4dbae21d5d4cd4550fe292b395fc97dc103ab477c2fed00d73943f6ab57b62ce405dce6aad384cf687305ab7474bf6debca86dc56f091172defa9831590d1647cc51527c89000b66e8d5fa2ac6344b451792cb9bb284bef99b052f894102b2fa335e2ca252963042a63aa907137c91d7f32fc4542c8557ef699832f2ea099a192b161646dd2d9f3f43a04db7abac65fa435ee4790a5ff811e04e2d1080827c608430aebf8e5c09f97c269bdbf6cb756c5d8ee07613a0bcd2eeac37af0eed7299ca518e81d243b2961d955bc7470817cc085e39f16193f436e4e6662de5c89a6e"
+    },
+    "vault_age": {
+      "passphrase": "correct horse battery staple",
+      "scrypt_log_n": 10,
+      "note": "low work factor only to keep tests fast; real vaults use 18",
+      "hex": "6167652d656e6372797074696f6e2e6f72672f76310a2d3e2073637279707420304a5359357836526936567a4b4c456349796b4536412031300a36534e70416e74376a777750435a596f7556773339736c2f6972436e436f332f75686d47364b73735a57630a2d2d2d20357730344e4c4e4d4c71534869582b71616a496d3035654b546f4c5262722f5955316b6a613443707862730a69c00bc8c3ab4c144e26d9952b342f49c2343a4226e59a68e3f65b971b633fa615e07a0db3f870261da53353c01f3faff46b509340990ed427d5e625e6937b706a17aa0a1aee19882dbb9b646fc9a78ea9491b3806f32bb320a5a9d42017215900e6feb4ae0e67443e992c04c87235464589a0631697ce95f5bf5b8ababb574645c653adc6d977f702707bbf4ef70863e5cf14d9395a2edcca4a91022ccf16676507603e728cf28adb6dd6c2781442e49ee73d3d678d0cbc954010acf0e74fbae9afc5337c36d9d9540378f5a1b70bbe234372579a81a024f8361406f540d60d"
+    }
+  },
+  "merge": [
+    {
+      "why": "union of names; newest updated wins per name",
+      "inputs": [
+        {
+          "v": 1,
+          "notes": {
+            "a": {
+              "id": "01",
+              "sha256": "00",
+              "size": 1,
+              "updated": "2026-01-01T00:00:00.000Z"
+            },
+            "b": {
+              "id": "02",
+              "sha256": "00",
+              "size": 1,
+              "updated": "2026-01-01T00:00:00.000Z"
+            }
+          }
+        },
+        {
+          "v": 1,
+          "notes": {
+            "a": {
+              "id": "01",
+              "sha256": "11",
+              "size": 2,
+              "updated": "2026-02-01T00:00:00.000Z"
+            },
+            "c": {
+              "id": "03",
+              "sha256": "00",
+              "size": 1,
+              "updated": "2025-01-01T00:00:00.000Z"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "v": 1,
+        "notes": {
+          "a": {
+            "id": "01",
+            "sha256": "11",
+            "size": 2,
+            "updated": "2026-02-01T00:00:00.000Z"
+          },
+          "b": {
+            "id": "02",
+            "sha256": "00",
+            "size": 1,
+            "updated": "2026-01-01T00:00:00.000Z"
+          },
+          "c": {
+            "id": "03",
+            "sha256": "00",
+            "size": 1,
+            "updated": "2025-01-01T00:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "why": "note locator follows the index whose entry won; other paths come from the newest written; missing ones are unioned",
+      "inputs": [
+        {
+          "v": 1,
+          "written": "2026-03-01T00:00:00.000Z",
+          "notes": {
+            "a": {
+              "id": "01",
+              "sha256": "00",
+              "size": 1,
+              "updated": "2026-01-01T00:00:00.000Z"
+            }
+          },
+          "locators": {
+            "pb": {
+              "notes/01.ovk": "https://pb.example/?old#k",
+              "vault.age": "https://pb.example/?v2#k"
+            }
+          }
+        },
+        {
+          "v": 1,
+          "written": "2026-02-01T00:00:00.000Z",
+          "notes": {
+            "a": {
+              "id": "01",
+              "sha256": "11",
+              "size": 2,
+              "updated": "2026-02-01T00:00:00.000Z"
+            }
+          },
+          "locators": {
+            "pb": {
+              "notes/01.ovk": "https://pb.example/?new#k",
+              "vault.age": "https://pb.example/?v1#k"
+            },
+            "pb2": {
+              "vault.age": "https://pb2.example/?v#k"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "v": 1,
+        "notes": {
+          "a": {
+            "id": "01",
+            "sha256": "11",
+            "size": 2,
+            "updated": "2026-02-01T00:00:00.000Z"
+          }
+        },
+        "locators": {
+          "pb": {
+            "notes/01.ovk": "https://pb.example/?new#k",
+            "vault.age": "https://pb.example/?v2#k"
+          },
+          "pb2": {
+            "vault.age": "https://pb2.example/?v#k"
+          }
+        },
+        "written": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "why": "same updated (a repair moved a paste): the index with the newer written wins the tie",
+      "inputs": [
+        {
+          "v": 1,
+          "written": "2026-01-02T00:00:00.000Z",
+          "notes": {
+            "a": {
+              "id": "01",
+              "sha256": "00",
+              "size": 1,
+              "updated": "2026-01-01T00:00:00.000Z"
+            }
+          },
+          "locators": {
+            "pb": {
+              "notes/01.ovk": "https://pb.example/?fresh#k"
+            }
+          }
+        },
+        {
+          "v": 1,
+          "written": "2026-01-01T00:00:00.000Z",
+          "notes": {
+            "a": {
+              "id": "01",
+              "sha256": "00",
+              "size": 1,
+              "updated": "2026-01-01T00:00:00.000Z"
+            }
+          },
+          "locators": {
+            "pb": {
+              "notes/01.ovk": "https://pb.example/?corrupt#k"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "v": 1,
+        "notes": {
+          "a": {
+            "id": "01",
+            "sha256": "00",
+            "size": 1,
+            "updated": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        "locators": {
+          "pb": {
+            "notes/01.ovk": "https://pb.example/?fresh#k"
+          }
+        },
+        "written": "2026-01-02T00:00:00.000Z"
+      }
+    },
+    {
+      "why": "health ledger: per key and backend the newest last_checked wins, last_ok is the newest from any input",
+      "inputs": [
+        {
+          "v": 1,
+          "written": "2026-09-01T00:00:00.000Z",
+          "notes": {},
+          "health": {
+            "_vault": {
+              "pb": {
+                "last_ok": "2026-08-01T00:00:00.000Z",
+                "last_checked": "2026-08-01T00:00:00.000Z",
+                "status": "ok",
+                "expires": null
+              }
+            },
+            "a": {
+              "mega": {
+                "last_ok": "2026-08-20T00:00:00.000Z",
+                "last_checked": "2026-09-01T00:00:00.000Z",
+                "status": "corrupt",
+                "expires": null
+              }
+            }
+          }
+        },
+        {
+          "v": 1,
+          "written": "2026-08-15T00:00:00.000Z",
+          "notes": {},
+          "health": {
+            "_vault": {
+              "pb": {
+                "last_ok": "2026-07-01T00:00:00.000Z",
+                "last_checked": "2026-08-10T00:00:00.000Z",
+                "status": "error",
+                "expires": "2027-01-01T00:00:00.000Z"
+              }
+            },
+            "a": {
+              "mega": {
+                "last_ok": "2026-08-25T00:00:00.000Z",
+                "last_checked": "2026-08-25T00:00:00.000Z",
+                "status": "ok",
+                "expires": null
+              },
+              "filen": {
+                "last_checked": "2026-08-02T00:00:00.000Z",
+                "status": "missing",
+                "expires": null
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "v": 1,
+        "notes": {},
+        "health": {
+          "_vault": {
+            "pb": {
+              "last_ok": "2026-08-01T00:00:00.000Z",
+              "last_checked": "2026-08-10T00:00:00.000Z",
+              "status": "error",
+              "expires": "2027-01-01T00:00:00.000Z"
+            }
+          },
+          "a": {
+            "mega": {
+              "last_ok": "2026-08-25T00:00:00.000Z",
+              "last_checked": "2026-09-01T00:00:00.000Z",
+              "status": "corrupt",
+              "expires": null
+            },
+            "filen": {
+              "last_checked": "2026-08-02T00:00:00.000Z",
+              "status": "missing",
+              "expires": null
+            }
+          }
+        },
+        "written": "2026-09-01T00:00:00.000Z"
+      }
+    },
+    {
+      "why": "pastes (delete tokens of paste-like copies): union by paste id per backend",
+      "inputs": [
+        {
+          "v": 1,
+          "written": "2026-09-02T00:00:00.000Z",
+          "notes": {},
+          "pastes": {
+            "pb": {
+              "aaaa": {
+                "path": "index.ovk",
+                "token": "01",
+                "at": "2026-09-02T00:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "v": 1,
+          "written": "2026-09-01T00:00:00.000Z",
+          "notes": {},
+          "pastes": {
+            "pb": {
+              "bbbb": {
+                "path": "notes/01.ovk",
+                "token": "02",
+                "at": "2026-09-01T00:00:00.000Z"
+              }
+            },
+            "pb2": {
+              "cccc": {
+                "path": "vault.age",
+                "token": "03",
+                "at": "2026-08-01T00:00:00.000Z"
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "v": 1,
+        "notes": {},
+        "pastes": {
+          "pb": {
+            "bbbb": {
+              "path": "notes/01.ovk",
+              "token": "02",
+              "at": "2026-09-01T00:00:00.000Z"
+            },
+            "aaaa": {
+              "path": "index.ovk",
+              "token": "01",
+              "at": "2026-09-02T00:00:00.000Z"
+            }
+          },
+          "pb2": {
+            "cccc": {
+              "path": "vault.age",
+              "token": "03",
+              "at": "2026-08-01T00:00:00.000Z"
+            }
+          }
+        },
+        "written": "2026-09-02T00:00:00.000Z"
+      }
+    }
+  ],
+  "cryptpad_credentials": [
+    {
+      "host": "cryptpad.private.coffee",
+      "username": "ovk-d817e11ecaee9333",
+      "password": "Fxxp1ZxqjjJ9lCqVWs1nuexAI-qVocR7"
+    },
+    {
+      "host": "crypt.unredacted.org",
+      "username": "ovk-5fc3e3ffdf507b34",
+      "password": "cE00hKz5sijhVfV1dvWU46-KxpspQgmn"
+    },
+    {
+      "host": "CryptPad.FR",
+      "username": "ovk-c875defc39b4dfb8",
+      "password": "dq7GJm6P1peq9Ja1qpKLkR5tfcE0WL5I"
+    }
+  ],
+  "discovery": {
+    "note": "scrypt(passphrase UTF-8, salt \"overkill v1 discovery:\" || NFC(vault_name), N=2^18, r=8, p=1, 32 bytes) as a Nostr secret key; invalid scalars retry with \"overkill v1 discovery 1:\" and so on",
+    "cases": [
+      {
+        "passphrase": "correct horse battery staple",
+        "vault_name": "groceries",
+        "salt": "overkill v1 discovery:groceries",
+        "secret_hex": "26c8386ebfbecd56cf7d6be141eb91e21babf2ebfc758928fbf90f5360146177",
+        "nsec": "nsec1ymyrsm4lhmx4dnmad0s5r6u3ugd6huhtl36cj28mly84xcq5v9msuth3yw",
+        "pubkey_hex": "4d0ac2a330b8e7f7c7f71e2dfeee9c197ac379a80c1804a50429ae661418a00f",
+        "npub": "npub1f59v9geshrnl03lhrcklam5ur9avx7dgpsvqffgy9xhxv9qc5q8s0tt83z"
+      },
+      {
+        "passphrase": "correct horse battery staple",
+        "vault_name": "Einkaufsliste für Oma",
+        "salt": "overkill v1 discovery:Einkaufsliste für Oma",
+        "secret_hex": "e07e9ac5ffc9e386c12fdf999b3288c43a1460709424cf01f68bd2aad9eb87ed",
+        "nsec": "nsec1uplf430le83cdsf0m7vekv5gcsapgcrsjsjv7q0k30f24k0tslksh3slm2",
+        "pubkey_hex": "8bd976e08d90a3672d001e0e130fe7fdc9d8e1af45830dac56debc18f773168e",
+        "npub": "npub130vhdcydjz3kwtgqrc8pxrl8lhya3cd0gkpsmtzkm67p3amnz68qygk520"
+      },
+      {
+        "passphrase": "correct horse battery staple",
+        "vault_name": "Einkaufsliste für Oma",
+        "note": "NFD vault name; the salt uses the NFC form",
+        "salt": "overkill v1 discovery:Einkaufsliste für Oma",
+        "secret_hex": "e07e9ac5ffc9e386c12fdf999b3288c43a1460709424cf01f68bd2aad9eb87ed",
+        "nsec": "nsec1uplf430le83cdsf0m7vekv5gcsapgcrsjsjv7q0k30f24k0tslksh3slm2",
+        "pubkey_hex": "8bd976e08d90a3672d001e0e130fe7fdc9d8e1af45830dac56debc18f773168e",
+        "npub": "npub130vhdcydjz3kwtgqrc8pxrl8lhya3cd0gkpsmtzkm67p3amnz68qygk520"
+      },
+      {
+        "passphrase": "tofu-plinth-gravel-omen-sprocket-lagoon",
+        "vault_name": "groceries",
+        "salt": "overkill v1 discovery:groceries",
+        "secret_hex": "417c16d991c1d05a3e9ebf158921df5ea7d1287c3fadcb73af34a2cc2b760f76",
+        "nsec": "nsec1g97pdkv3c8g95057hu2cjgwlt6naz2ru87kukua0xj3vc2mkpamqvu62zz",
+        "pubkey_hex": "2002ff1fad555be0a0e01c3248a1028af4d83bb1e2e4684016a5317ea22e44ac",
+        "npub": "npub1yqp078ad24d7pg8qrsey3ggz3t6dswa3utjxssqk55chag3wgjkqtqapg7"
+      }
+    ]
+  },
+  "fileverse": {
+    "note": "from derivation.master_hex. wallet/ownerAgent: HKDF-SHA256(master, info), retry with info + \" 1\", \" 2\", ... if not a valid secp256k1 scalar. ownerUcan 32 bytes, portalSeed 48 bytes, apiKeySeed 24 bytes. api_key = unpadded base64url(apiKeySeed); api_key_id = 0x || sha256(apiKeySeed). Collaborator key/DID: HKDF-SHA256(apiKeySeed, salt 0x00, info COLLABORATOR_PRIVATE_KEY / COLLABORATOR_UCAN_SECRET) as in @fileverse/api.",
+    "wallet_hex": "e862dc671578053c0f3e6fc6f6c5b136156b605225c8be7b900d0b6d1ffc34af",
+    "wallet_address": "0x0dE2c2340401A294FeE098E15A7480229DF683A6",
+    "owner_agent_hex": "de3c541099dd35349d150b9741a66c6ef3317e99e028a26b105f148c44855211",
+    "owner_ucan_hex": "8ae0a2c8fb99d2f05b5801c1f76084107373f5cfe03432b49e83e8fd32bc17b8",
+    "portal_seed_hex": "cf213c62900b0dfb6cf51ccc466f92ecb43d302ad8badb2bb0ad1443becad3675ae0564dc9b7e39b041fd10520862645",
+    "api_key_seed_hex": "ab8f75d7f94e51820144a101fd47cb56b78e9bd57fb7f520",
+    "api_key": "q4911_lOUYIBRKEB_UfLVreOm9V_t_Ug",
+    "api_key_id": "0x577524a3b463df9245a9c9d0a1b1ec081fc863ea52ff2337c335df3080558832",
+    "owner_did": "did:key:z6Mkpu6z3HXYgHp88YgoJXbE8SQ8uhbc3cFry81KQmL5hLLT",
+    "collaborator_key_hex": "c7add000636746513caab72b41688d96bb5471b6393b2262da9b49c3d13bd609",
+    "collaborator_did": "did:key:z6Mkh2NHYhdPngQ6emFgYyUFAJppDr2H1kQRQduUbiAKMRvt",
+    "app_encryption_key_verifier": "0x96d13e48289d66ffe1f5a278c65b92e4a1762d8da2868eb16d77e84292b01862",
+    "app_decryption_key_verifier": "0x23598cb7b581eeaeb952210927b53ac4f291d34482c3b31b14abde07741d6f67"
+  }
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="referrer" content="no-referrer" />
+		<!-- in the template, not in svelte:head: the pages render in the browser, so this is what crawlers and link previews see -->
+		<title>Super Secret Notes by GaussRun: double-encrypted notes stored redundantly across a dozen free, no-signup hosts</title>
+		<meta name="description" content="Super Secret Notes by GaussRun: a secret note you cannot afford to lose, stored redundantly across a dozen free, no-signup hosts (PrivateBin, CryptPad, Nostr relays, Blossom) and double-encrypted in your browser (age, then AES-256-GCM). Recover anywhere with a vault name and passphrase, or move a note from a public computer to your phone by QR. Open source." />
+		<meta name="keywords" content="encrypted notes, secret notes, end-to-end encryption, age encryption, AES-256-GCM, redundant storage, no signup, PrivateBin, CryptPad, Nostr, Blossom, password manager, QR code, public computer" />
+		<meta name="application-name" content="Super Secret Notes" />
+		<meta name="theme-color" content="#0b0f14" />
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Super Secret Notes by GaussRun" />
+		<meta property="og:title" content="Super Secret Notes by GaussRun" />
+		<meta property="og:description" content="A note you cannot afford to lose: stored redundantly on a dozen free, no-signup hosts, double-encrypted in your browser, recoverable anywhere with a vault name and passphrase." />
+		<meta property="og:url" content="%sveltekit.env.PUBLIC_SITE_URL%/" />
+		<meta property="og:image" content="%sveltekit.env.PUBLIC_SITE_URL%/og.png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content="Super Secret Notes by GaussRun: a note wrapped in encryption layers, copied to many hosts" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="Super Secret Notes by GaussRun" />
+		<meta name="twitter:description" content="A note you cannot afford to lose: stored redundantly on a dozen free, no-signup hosts, double-encrypted in your browser." />
+		<meta name="twitter:image" content="%sveltekit.env.PUBLIC_SITE_URL%/og.png" />
+		<script type="application/ld+json">
+			{
+				"@context": "https://schema.org",
+				"@type": "SoftwareApplication",
+				"name": "Super Secret Notes by GaussRun",
+				"alternateName": "super-secret-notes (command line)",
+				"applicationCategory": "SecurityApplication",
+				"operatingSystem": "Any (web browser); command line on Node.js 24",
+				"description": "A secret note you cannot afford to lose, stored redundantly across a dozen free, no-signup hosts (PrivateBin, CryptPad, Nostr relays, Blossom servers) and double-encrypted before it leaves the device (age X25519, then AES-256-GCM). Recover with a vault name and passphrase; move a note from a public computer to a phone by QR.",
+				"url": "%sveltekit.env.PUBLIC_SITE_URL%/",
+				"image": "%sveltekit.env.PUBLIC_SITE_URL%/og.png",
+				"license": "https://www.gnu.org/licenses/agpl-3.0.html",
+				"isAccessibleForFree": true,
+				"offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+				"author": { "@type": "Organization", "name": "GaussRun", "url": "https://github.com/GaussRun" },
+				"codeRepository": "https://github.com/GaussRun/super-secret-notes"
+			}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div class="app-root">%sveltekit.body%</div>
+	</body>
+</html>

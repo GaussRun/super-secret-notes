@@ -1,0 +1,5 @@
+# Super Secret Notes by GaussRun: everything here is public, static and free to crawl
+User-agent: *
+Allow: /
+
+Sitemap: {{SITE_URL}}/sitemap.xml

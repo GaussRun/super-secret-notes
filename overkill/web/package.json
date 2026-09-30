@@ -1,0 +1,50 @@
+{
+	"name": "super-secret-notes-web",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"build:test": "OVERKILL_BUILD_DIR=build-test BASE_PATH=/ovk-test OVERKILL_CSP_LOOPBACK=1 vite build",
+		"preview": "node e2e/serve.mjs build '' 4173",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"test:unit": "vitest --run",
+		"test:e2e": "playwright test",
+		"test": "vitest --run && playwright test"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.60.0",
+		"@sveltejs/adapter-static": "^3.0.10",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@types/node": "^24.19.0",
+		"@types/ws": "^8.18.1",
+		"@vitest/browser-playwright": "4.1.11",
+		"jsqr": "^1.4.0",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.16",
+		"vitest": "^4.1.8",
+		"ws": "^8.22.0"
+	},
+	"dependencies": {
+		"@noble/hashes": "^2.4.0",
+		"@scure/base": "^2.4.0",
+		"age-encryption": "0.3.1",
+		"chainpad": "5.3.1",
+		"chainpad-crypto": "0.3.0",
+		"chainpad-listmap": "1.2.0",
+		"chainpad-netflux": "1.3.1",
+		"json.sortify": "2.2.2",
+		"netflux-websocket": "1.3.2",
+		"nostr-tools": "2.25.2",
+		"nthen": "0.2.1",
+		"qrcode-generator": "^2.0.4",
+		"tweetnacl": "1.0.3",
+		"tweetnacl-util": "0.15.1"
+	},
+	"license": "AGPL-3.0-or-later"
+}

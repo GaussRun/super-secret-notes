@@ -1,0 +1,4 @@
+# better-sqlite3 comes with @fileverse/api; Overkill uses its own in-memory node:sqlite adapter,
+# so the native build is not needed.
+allowBuilds:
+  better-sqlite3: false
