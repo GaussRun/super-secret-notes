@@ -13,7 +13,7 @@ import { DEFAULT_ROOT, validVaultName, backendConfig } from '$cli/defaults-core.
 import { identity } from '$cli/backends/nostr.js';
 import { logger } from './shims/log.js';
 import { activity } from './activity.svelte';
-import { FILES, readBlob, writeBlob, clearAll, clearStored, blobIo, goEphemeral, endEphemeral } from './idb';
+import { FILES, readBlob, writeBlob, clearAll, clearStored, blobIo, goEphemeral, endEphemeral, saveBackup, readBackup, dropBackup, type VaultBackup } from './idb';
 import { handoffLink, plainText } from './qr';
 import { loadHosts, backendConfigs, type BackendCfg } from './settings';
 import { makeBackends, supported, TRAVELS_WITH_SECRETS, type Adapter } from './backends';
@@ -70,10 +70,29 @@ class VaultState {
 	#discoverySecret: Uint8Array | null = null;
 	#secrets: SecretStoreCore | null = null;
 
+	/** Set when load() put back a vault whose replacement was interrupted: its name, for a notice. */
+	restored = $state<string | null>(null);
+
 	async load() {
 		if (this.#store) return;
+		// a replacement that never finished (tab closed, crash): the old vault comes back
+		const backup = await readBackup();
+		if (backup) {
+			const complete = (await readBlob(FILES.vault)) && (await readBlob(FILES.config));
+			if (!complete) {
+				await this.#putBack(backup);
+				this.restored = backup.name ?? '';
+			}
+		}
 		const bytes = await readBlob(FILES.vault);
 		this.status = bytes ? 'locked' : 'none';
+	}
+
+	async #putBack(backup: VaultBackup) {
+		await clearAll();
+		for (const [f, b] of Object.entries(backup.files)) await writeBlob(f, b);
+		rememberName(backup.name || null);
+		await dropBackup();
 	}
 
 	get store(): Overkill {
@@ -184,27 +203,31 @@ class VaultState {
 	 * from this browser once the new one is in place.
 	 */
 	async #taking<T>({ replace, ephemeral }: { replace: boolean; ephemeral: boolean }, fn: () => Promise<T>): Promise<T> {
-		let previous: Record<string, Uint8Array> | null = null;
-		const previousName = rememberedName();
+		let previous: VaultBackup | null = null;
 		if (replace && !ephemeral) {
 			if (this.status === 'unlocked') await this.lock();
-			previous = {};
+			const files: Record<string, Uint8Array> = {};
 			for (const f of Object.values(FILES)) {
 				const b = await readBlob(f);
-				if (b) previous[f] = b;
+				if (b) files[f] = b;
+			}
+			if (files[FILES.vault]) {
+				previous = { files, name: rememberedName() || null, at: new Date().toISOString() };
+				// on disk before anything is cleared: a closed tab mid-create still has it (load() puts it back)
+				await saveBackup(previous);
 			}
 		}
 		if (ephemeral) this.#goPublic();
 		if (!replace && (await readBlob(FILES.vault))) throw new Error('this browser already holds a vault: forget it in Settings first');
 		try {
-			return await fn();
+			const result = await fn();
+			if (previous) await dropBackup(); // the new vault is fully in place
+			return result;
 		} catch (err) {
-			if (previous?.[FILES.vault]) {
+			if (previous) {
 				// put the old vault back, locked, as it was
 				await this.lock();
-				await clearAll();
-				for (const [f, b] of Object.entries(previous)) await writeBlob(f, b);
-				rememberName(previousName || null);
+				await this.#putBack(previous);
 				this.status = 'locked';
 			}
 			throw err;
@@ -217,6 +240,7 @@ class VaultState {
 		const vaultBytes = await step('stretching the passphrase with scrypt (slow on purpose)', () => c.encryptVault(vault, passphrase));
 		const keys = await c.unlockKeys(vault);
 		await clearAll(); // leftovers of a vault this browser forgot
+		await testHook();
 		await writeBlob(FILES.vault, vaultBytes);
 		const conf: WebConfig = { v: 1, cfg, published: null };
 		this.#keys = keys;
@@ -266,6 +290,7 @@ class VaultState {
 		const keys = await c.unlockKeys(vault);
 		if (secretsBlob) await c.decryptBlob(keys, SECRETS_ID, secretsBlob); // must open before anything is written
 		await clearAll();
+		await testHook();
 		await writeBlob(FILES.vault, vaultBytes);
 		if (secretsBlob) await writeBlob(FILES.secrets, secretsBlob);
 		const conf: WebConfig = { v: 1, cfg: cfg as VaultCfg, published: null };
@@ -447,6 +472,15 @@ class VaultState {
 }
 
 export { MIN_COPIES };
+
+// test builds only (VITE_OVERKILL_TEST_HOOKS, set by build:test; gone from real builds): lets
+// the e2e tests interrupt a create or recover right after the old files were cleared
+async function testHook() {
+	if (!import.meta.env.VITE_OVERKILL_TEST_HOOKS) return;
+	const mode = (globalThis as { __ovkAfterClear?: string }).__ovkAfterClear;
+	if (mode === 'throw') throw new Error('interrupted after clearing (test hook)');
+	if (mode === 'hang') await new Promise(() => {});
+}
 
 const step = <T>(message: string, fn: () => Promise<T>, done?: (v: T) => string) => activity.step(message, fn, done);
 

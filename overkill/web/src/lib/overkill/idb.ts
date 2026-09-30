@@ -2,6 +2,9 @@
 // index-cache.ovk, secrets.ovk). Keys and plaintext stay in memory; a reload means unlocking again.
 const DB = 'overkill-notes';
 const STORE = 'blobs';
+// the vault being replaced, kept while a new one is made (its own store: clearAll() leaves it alone)
+const BACKUP = 'backup';
+const PREVIOUS = 'previous-vault';
 
 export const FILES = {
 	vault: 'vault.age',
@@ -29,20 +32,22 @@ export function endEphemeral() {
 
 function open(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
-		const req = indexedDB.open(DB, 1);
-		req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+		const req = indexedDB.open(DB, 2);
+		req.onupgradeneeded = () => {
+			for (const s of [STORE, BACKUP]) if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s);
+		};
 		req.onsuccess = () => resolve(req.result);
 		req.onerror = () => reject(req.error ?? new Error('IndexedDB would not open'));
 		req.onblocked = () => reject(new Error('IndexedDB is blocked by another tab'));
 	});
 }
 
-async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, store = STORE): Promise<T> {
 	const db = await open();
 	try {
 		return await new Promise<T>((resolve, reject) => {
-			const t = db.transaction(STORE, mode);
-			const req = fn(t.objectStore(STORE));
+			const t = db.transaction(store, mode);
+			const req = fn(t.objectStore(store));
 			t.oncomplete = () => resolve(req.result);
 			t.onerror = () => reject(t.error ?? new Error('IndexedDB transaction failed'));
 			t.onabort = () => reject(t.error ?? new Error('IndexedDB transaction aborted'));
@@ -98,4 +103,36 @@ export async function clearStored(): Promise<void> {
 /** { read, write } over one blob, the shape the CLI's store and secret store expect. */
 export function blobIo(name: string) {
 	return { read: () => readBlob(name), write: (bytes: Uint8Array) => writeBlob(name, bytes) };
+}
+
+export interface VaultBackup {
+	files: Record<string, Uint8Array>;
+	name: string | null;
+	at: string;
+}
+
+/** Keep the stored vault's files aside (in IndexedDB, so a closed tab or a crash keeps them too). */
+export async function saveBackup(backup: VaultBackup): Promise<void> {
+	try {
+		await tx('readwrite', (s) => s.put(backup, PREVIOUS), BACKUP);
+	} catch (err) {
+		throw new Error(`this browser would not keep a copy of the current vault aside (${(err as Error).message}); nothing was changed`);
+	}
+}
+
+export async function readBackup(): Promise<VaultBackup | null> {
+	try {
+		const v = (await tx('readonly', (s) => s.get(PREVIOUS), BACKUP)) as VaultBackup | undefined;
+		return v?.files?.[FILES.vault] ? v : null;
+	} catch {
+		return null;
+	}
+}
+
+export async function dropBackup(): Promise<void> {
+	try {
+		await tx('readwrite', (s) => s.delete(PREVIOUS), BACKUP);
+	} catch (err) {
+		console.debug(`overkill: IndexedDB backup delete: ${(err as Error).message}`);
+	}
 }

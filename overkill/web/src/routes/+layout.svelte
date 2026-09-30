@@ -114,6 +114,9 @@
 </header>
 
 <main class="wrap">
+	{#if vault.restored !== null}
+		<p class="warn" data-testid="restored-notice">Making a new vault was interrupted, so this browser went back to the vault it held before{vault.restored ? ` (${vault.restored})` : ''}.</p>
+	{/if}
 	{@render children()}
 </main>
 
