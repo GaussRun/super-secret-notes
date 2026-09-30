@@ -1,5 +1,5 @@
 // A second vault in a browser that already holds one, locked: the landing page and the locked
-// pages offer "Make a new vault instead", the new vault takes the old one's place only once it
+// pages offer "Store note in new vault", the new vault takes the old one's place only once it
 // is made, the notes stay apart, and the first vault comes back by name + passphrase. A failed
 // recovery leaves the vault that was there.
 import { test, expect } from '@playwright/test';
@@ -38,13 +38,13 @@ test('a second vault while one is stored and locked; notes stay apart; the first
 	await expect(page).toHaveURL(url('/unlock/'));
 	await expect(page.getByTestId('unlock-form')).toBeVisible();
 	await expect(page.getByLabel('Vault name')).toHaveValue('vault one');
-	await expect(page.getByTestId('other-vault').getByRole('link', { name: 'Make a new vault instead' })).toBeVisible();
+	await expect(page.getByTestId('other-vault').getByRole('link', { name: 'Store note in new vault' })).toBeVisible();
 	await page.screenshot({ path: 'test-results/second-vault-unlock-or-new.png', fullPage: true });
 
 	// /new/ with a locked vault: same choice, no dead end
 	await page.goto(url('/new/'));
 	await expect(page.getByTestId('unlock-form')).toBeVisible();
-	await page.getByTestId('other-vault').getByRole('link', { name: 'Make a new vault instead' }).click();
+	await page.getByTestId('other-vault').getByRole('link', { name: 'Store note in new vault' }).click();
 	await expect(page).toHaveURL(url('/setup/'));
 	await expect(page.getByTestId('replace-note')).toContainText('vault one');
 	await page.screenshot({ path: 'test-results/second-vault-setup-replace.png', fullPage: true });

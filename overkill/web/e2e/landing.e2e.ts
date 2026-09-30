@@ -24,14 +24,14 @@ for (const [w, h] of [[1280, 800], [375, 740]]) {
 			const errors = watchErrors(page);
 			await page.goto(url('/'));
 			const primary = page.getByTestId('primary-cta');
-			await expect(primary).toHaveText('Store a secret note');
+			await expect(primary).toHaveText('Store note in new vault');
 			await expect(primary).toBeInViewport({ ratio: 1 });
 			await expect(primary).toHaveAttribute('href', url('/setup/'));
 			const secondary = page.getByTestId('secondary-cta');
 			await expect(secondary).toHaveText('Open my vault');
 			await expect(secondary).toBeInViewport({ ratio: 1 });
 			await expect(secondary).toHaveAttribute('href', url('/recover/'));
-			expect(await actionsAboveTheFold(page)).toEqual(['Store a secret note']);
+			expect(await actionsAboveTheFold(page)).toEqual(['Store note in new vault']);
 			// the first screen is only the hero: the diagram starts below the fold
 			expect((await page.getByTestId('diagram').boundingBox())!.y).toBeGreaterThanOrEqual(h);
 			// the old uppercase feature line and the row of header links are gone

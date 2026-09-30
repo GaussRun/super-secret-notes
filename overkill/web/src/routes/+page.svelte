@@ -3,11 +3,21 @@
 	import ThanksStrip from '$lib/components/ThanksStrip.svelte';
 	import Diagram from '$lib/components/Diagram.svelte';
 	import { to } from '$lib/link';
+	import { rememberedName } from '$lib/overkill/credentials';
 
-	// one thing to do: store a note (or, with a vault open, write the next one)
-	const unlocked = $derived(vault.status === 'unlocked');
-	const primary = $derived(unlocked ? { href: to('/new/'), label: 'New note' } : vault.status === 'locked' ? { href: to('/unlock/'), label: 'Store a secret note' } : { href: to('/setup/'), label: 'Store a secret note' });
-	const secondary = $derived(unlocked ? { href: to('/notes/'), label: 'My notes' } : { href: to(vault.status === 'locked' ? '/unlock/' : '/recover/'), label: 'Open my vault' });
+	// One big action. No vault here: store a note in a new one. A stored, locked vault: open it
+	// (a new vault stays one smaller click away). Open: the next note. "Store note in new vault"
+	// always goes to the note-first setup, never to an unlock form.
+	const NEW_VAULT = { href: to('/setup/'), label: 'Store note in new vault' };
+	const remembered = rememberedName();
+	// until IndexedDB answers, the remembered name (localStorage) already says a vault is stored
+	const state = $derived(vault.status === 'unlocked' ? 'unlocked' : vault.status === 'locked' || (vault.status === 'loading' && remembered) ? 'stored' : 'none');
+	const primary = $derived(
+		state === 'unlocked' ? { href: to('/new/'), label: 'New note' } : state === 'stored' ? { href: to('/unlock/'), label: 'Open my vault' } : NEW_VAULT
+	);
+	const secondary = $derived(
+		state === 'unlocked' ? { href: to('/notes/'), label: 'My notes' } : state === 'stored' ? NEW_VAULT : { href: to('/recover/'), label: 'Open my vault' }
+	);
 </script>
 
 <section class="hero" data-testid="hero">
@@ -16,8 +26,9 @@
 		Write a note. Your browser encrypts it, then it's copied to many free hosts that encrypt it again.
 	</p>
 	<p class="paranoid" data-testid="paranoid">For the extra paranoid.</p>
-	<a class="button cta" href={primary.href} data-testid="primary-cta">{primary.label}</a>
-	<a class="second" href={secondary.href} data-testid="secondary-cta">{secondary.label}</a>
+	<a class="button cta" href={primary.href} data-testid="primary-cta" data-state={state}>{primary.label}</a>
+	{#if state === 'stored' && remembered}<span class="vault-name id" data-testid="stored-vault-name">{remembered}</span>{/if}
+	<a class={state === 'stored' ? 'button secondary second-button' : 'second'} href={secondary.href} data-testid="secondary-cta">{secondary.label}</a>
 </section>
 
 <Diagram />
@@ -45,6 +56,8 @@
 	.paranoid { margin: 0 0 30px; font-size: 0.9rem; color: var(--muted); font-style: italic; }
 	.cta { font-size: clamp(1.15rem, 3.2vw, 1.4rem); padding: 18px 36px; border-radius: 12px; margin: 0; }
 	.second { margin-top: 18px; font-size: 1rem; }
+	.vault-name { margin-top: 10px; font-size: 0.9rem; color: var(--muted); word-break: break-all; }
+	.second-button { margin-top: 18px; font-size: 0.95rem; padding: 8px 16px; background: transparent; }
 	.steps ol { padding-left: 22px; line-height: 1.55; }
 	.steps li { margin: 8px 0; }
 	.oneliner { text-align: center; margin: 22px 0; }
