@@ -49,3 +49,6 @@ export async function savedCredential(): Promise<{ id: string; password: string 
 		return null;
 	}
 }
+
+/** Whether this browser can store a login from the page (PasswordCredential: Chromium only). */
+export const canStoreCredential = () => Boolean(PasswordCredentialCtor()) && Boolean(globalThis.navigator?.credentials?.store);

@@ -3,7 +3,7 @@
 A note you cannot afford to lose, saved in many independent places, recoverable anywhere with a
 vault name plus passphrase. In a browser tab, with no server of ours.
 
-![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 4 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305) and 4 Nostr relays (native NIP-44), 10 copies; coming soon: MEGA, Proton Drive, Filen, Fileverse and Blossom; any one healthy copy plus the vault name and passphrase brings it back](static/diagram.svg)
+![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 4 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305) and 4 Nostr relays (native NIP-44), 10 copies; coming soon: MEGA, Proton Drive, Filen, Fileverse and Blossom; the vault name and passphrase find the vault (or the recovery kit does), and any one healthy copy is enough to read a note](static/diagram.svg)
 
 The diagram is `static/diagram.svg` (regenerate with `node scripts/diagram.mjs`; the same layout
 renders inline on the landing page and on /how-it-works/). Logo sources and terms:

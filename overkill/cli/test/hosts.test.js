@@ -18,6 +18,7 @@ import { preferredHosts, deadBackends, replacementHints, site } from '../src/hos
 import { replacementFor } from '../src/hosts/swap.js'
 import { KNOWN, staleHint } from '../src/hosts/directories.js'
 import { defaultBackends } from '../src/defaults.js'
+import { pools } from '../src/pools.js'
 import { startFakePrivatebin, startFakeBlossom, startFakeCryptpad, startFakeRelayWithInfo, startFakeWeb } from './fake-hosts.js'
 
 process.env.OVERKILL_HOSTS_ALLOW_LOOPBACK = '1'
@@ -352,18 +353,27 @@ test('init defaults prefer cached healthy hosts and keep short names unique', as
   try {
     const cfgs = defaultBackends({ cryptpad: false, home })
     const pb = cfgs.filter((x) => x.type === 'privatebin')
-    // four slots: the three healthy cached hosts first, then built-in hosts not known to be dead
-    assert.equal(pb.length, 4)
-    assert.deepEqual(pb.slice(0, 3).map((x) => x.url).sort(), ['https://bin.third.example', 'https://paste.twin.example.net', 'https://paste.twin.example.org'])
-    assert.deepEqual(pb.slice(0, 3).map((x) => x.name).sort(), ['pb-third', 'pb-twin', 'pb-twin-2'])
-    assert.deepEqual(pb.slice(3).map((x) => x.url), KNOWN.privatebin.slice(3, 4))
-    assert.ok(!pb.some((x) => [a, b, c].includes(x.url)), 'failed hosts are not picked')
-    assert.equal(new Set(pb.map((x) => x.name)).size, 4)
-    const relays = cfgs.filter((x) => x.type === 'nostr').map((x) => x.url)
-    assert.deepEqual(relays, KNOWN.nostr.slice(1, 5))
-    // without a cache nothing changes
+    // four drawn at random from the cache's hosts not known to fail (directory finds included)
+    const cached = ['https://bin.third.example', 'https://paste.twin.example.net', 'https://paste.twin.example.org']
+    const allowed = new Set([...cached, ...pools().privatebin].filter((u) => ![a, b, c].includes(u)))
+    const seen = new Set()
+    for (let i = 0; i < 40; i++) {
+      const cfgs = defaultBackends({ cryptpad: false, home })
+      const pb = cfgs.filter((x) => x.type === 'privatebin')
+      assert.equal(pb.length, 4)
+      for (const x of pb) { assert.ok(allowed.has(x.url), x.url); seen.add(x.url) }
+      assert.ok(!pb.some((x) => [a, b, c].includes(x.url)), 'failed hosts are not picked')
+      assert.equal(new Set(pb.map((x) => x.name)).size, 4)
+      const relays = cfgs.filter((x) => x.type === 'nostr').map((x) => x.url)
+      assert.equal(relays.length, 4)
+      assert.ok(!relays.includes(KNOWN.nostr[0]), 'a host removed by hand is not picked')
+      assert.ok(!relays.includes('wss://relay.damus.io'))
+    }
+    // the cached directory finds do get drawn
+    assert.ok(cached.some((u) => seen.has(u)))
+    // without a cache: the built-in pools
     const plain = defaultBackends({ cryptpad: false })
-    assert.deepEqual(plain.filter((x) => x.type === 'privatebin').map((x) => x.url), KNOWN.privatebin.slice(0, 4))
+    for (const x of plain.filter((y) => y.type === 'privatebin')) assert.ok(pools().privatebin.includes(x.url))
   } finally {
     if (saved !== undefined) process.env.OVERKILL_DEFAULT_BACKENDS = saved
   }
@@ -467,7 +477,10 @@ test('cli: a broken hosts.json does not break init defaults', async () => {
   const saved = process.env.OVERKILL_DEFAULT_BACKENDS
   delete process.env.OVERKILL_DEFAULT_BACKENDS
   try {
-    assert.deepEqual(defaultBackends({ cryptpad: false, home }).map((x) => x.url), defaultBackends({ cryptpad: false }).map((x) => x.url))
+    // a random draw from the built-in pools, as with no cache at all
+    const d = defaultBackends({ cryptpad: false, home })
+    assert.equal(d.length, 8)
+    for (const x of d) assert.ok(pools()[x.type].includes(x.url), x.url)
   } finally {
     if (saved !== undefined) process.env.OVERKILL_DEFAULT_BACKENDS = saved
   }

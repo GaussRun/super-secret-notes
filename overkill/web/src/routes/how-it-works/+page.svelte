@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { to } from '$lib/link';
 	import Diagram from '$lib/components/Diagram.svelte';
-	import { defaultCounts, defaultHosts } from '$lib/overkill/settings';
+	import { defaultCounts } from '$lib/overkill/settings';
+	import { targetCounts, pools } from '$cli/pools.js';
 	import { total } from '$lib/diagram';
 
 	// counts from the defaults list, so changing the defaults never means editing this page
 	const counts = defaultCounts();
-	const inBrowser = defaultHosts().cryptpad.length;
+	// the command line tool can use CryptPad instances a page cannot (their API only allows their own pages)
+	const cli = targetCounts(pools());
 	// the code on GitHub (same file the web app bundles)
 	const CRYPTO_JS = 'https://github.com/GaussRun/super-secret-notes/blob/main/overkill/cli/src/crypto.js';
 </script>
@@ -25,7 +27,7 @@
 <div class="panel">
 	<h2>Redundancy first</h2>
 	<ul>
-		<li data-testid="default-counts">By default every note goes to {total(counts)} zero-signup hosts: {counts.privatebin} PrivateBin instances, CryptPad accounts made for your vault ({counts.cryptpad} instances from the command line; {inBrowser} in the browser, because the others only let their own pages use them) and {counts.nostr} Nostr relays. Blossom servers are opt-in, because they add no encryption of their own; MEGA, Proton Drive, Filen and Fileverse are opt-in in the command line tool.</li>
+		<li data-testid="default-counts">Each new vault draws its own hosts at random from known-good pools, one operator per host: here in the browser {total(counts)} zero-signup hosts ({counts.privatebin} PrivateBin instances, {counts.cryptpad} CryptPad {counts.cryptpad === 1 ? 'account' : 'accounts'} made for your vault, {counts.nostr} Nostr relays); the command line tool draws {total(cli)}, with {cli.cryptpad} CryptPad instances. The pools are listed on <a href={to('/hosts/')}>Hosts</a>. Blossom servers are opt-in, because they add no encryption of their own; MEGA, Proton Drive, Filen and Fileverse are opt-in in the command line tool.</li>
 		<li data-testid="failure-handling">Every host is tried on its own with a deadline: one that fails or does not answer is marked failed and retried later, a default that fails at setup gets a known-good stand-in, and a note counts as stored once 2 hosts hold it.</li>
 		<li>Reading takes the first copy that passes every check and falls back to the next one if a copy is missing, damaged or out of date.</li>
 		<li>An encrypted index lists your notes, where each copy lives and when each was last verified (the health ledger). <a href={to('/check/')}>Check</a> downloads and verifies every copy; Repair re-uploads broken ones from a healthy copy.</li>

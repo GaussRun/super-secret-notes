@@ -33,11 +33,19 @@ test('clean: no publish button, a saved status, every host listed with the one i
 	await expect(await readNote(page, NOTE)).toHaveValue(TEXT);
 	await expect(page.getByTestId('publish')).toHaveCount(0);
 	await expect(page.getByTestId('saved-status')).toContainText('Saved');
-	// collapsed into one line; expanding shows the table
+	// quiet: one summary line and the first 3 hosts, grey; the table and raw copies only on request
 	const lives = page.getByTestId('note-lives');
-	await expect(lives).not.toHaveAttribute('open', '');
-	await expect(page.getByTestId('note-hosts')).toBeHidden();
-	await lives.locator('summary').click();
+	await expect(page.getByTestId('note-hosts')).toHaveCount(0);
+	await expect(page.getByTestId('lives-preview').locator('li[data-backend]')).toHaveCount(3);
+	await expect(page.getByTestId('lives-preview')).toContainText('and 3 more');
+	expect(await lives.evaluate((e) => getComputedStyle(e).fontSize)).not.toBe(await page.locator('body').evaluate((e) => getComputedStyle(e).fontSize));
+	await lives.screenshot({ path: 'test-results/note-lives-collapsed.png' });
+	// nothing is fetched for the details: opening them sends no request to any host
+	await page.waitForTimeout(500);
+	const before = fakes.pb.map((p) => p.requests.length);
+	await page.getByTestId('show-all').click();
+	await page.waitForTimeout(500);
+	expect(fakes.pb.map((p) => p.requests.length)).toEqual(before);
 	const rows = page.getByTestId('note-hosts').locator('tbody tr');
 	await expect(rows).toHaveCount(6);
 	const from = (await page.getByTestId('note-source').getAttribute('data-backend'))!;
@@ -62,10 +70,10 @@ test('clean: no publish button, a saved status, every host listed with the one i
 	expect(await page.getByTestId('note-source').innerText()).not.toMatch(/\b(pb|cp|nostr|blossom)-\d/);
 
 	await page.getByTestId('check-note').click();
-	await expect(page.getByTestId('note-hosts').locator('tbody td.ok')).toHaveCount(6);
+	await expect(page.getByTestId('note-hosts').locator('tbody tr[data-backend] td:nth-child(3)', { hasText: /^OK$/ })).toHaveCount(6);
 	await expect(page.getByTestId('saved-status')).toContainText('Saved on 6/6 hosts');
 	await expect(page.getByTestId('lives-summary')).toHaveText(/^Stored on 6 of 6 hosts, all OK, checked \d\d:\d\d UTC$/);
-	await expect(page.getByTestId('lives-summary')).toHaveClass(/\bok\b/);
+	await expect(page.getByTestId('lives-summary')).not.toHaveClass(/\bwarn\b/);
 	await page.screenshot({ path: 'test-results/note-lives.png', fullPage: true });
 	expect(errors).toEqual([]);
 });

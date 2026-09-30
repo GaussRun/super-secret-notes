@@ -21,7 +21,8 @@
 		['/recovery-kit/', 'Vault access'],
 		['/how-it-works/', 'How it works'],
 		['/thanks/', 'Thanks'],
-		['/trust/', 'Trust model']
+		['/trust/', 'Trust model'],
+		['/about/', 'About']
 	];
 	const active = (href: string) => page.url.pathname.startsWith(to(href));
 
@@ -120,9 +121,6 @@
 	{@render children()}
 </main>
 
-<footer class="wrap muted">
-	Super Secret Notes by GaussRun (command line: <span class="mono">super-secret-notes</span>), AGPL-3.0-or-later, <a href="https://github.com/GaussRun/super-secret-notes">source</a>, <a href={to('/how-it-works/')}>how it works</a>, <a href={to('/thanks/')}>thank you</a>. A static page: whoever serves it could change it, so read <a href={to('/trust/')}>the trust model</a>.
-</footer>
 
 <style>
 	header { border-bottom: 1px solid var(--line); background: var(--header-bg); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(6px); }
@@ -143,5 +141,4 @@
 	.menu li a.active { color: var(--green); }
 	.menu button { width: 100%; margin: 4px 0 0; }
 	.state { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-family: var(--mono); font-size: 0.75rem; font-weight: 700; padding: 4px 10px 8px; border-bottom: 1px solid var(--line); }
-	footer { font-size: 0.8rem; padding-bottom: 32px; }
 </style>

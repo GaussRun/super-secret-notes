@@ -118,3 +118,20 @@ test('/thanks/ and the landing strip thank the hosts and projects, with support 
 	await expect(page.locator('body')).not.toContainText(/grocer/i);
 });
 
+
+test('the site info (author, license, source, trust model) is on the landing page and /about/ only', async ({ page }) => {
+	for (const path of ['/', '/about/']) {
+		await page.goto(url(path));
+		const info = page.getByTestId('site-info');
+		await expect(info).toContainText('AGPL-3.0-or-later');
+		await expect(info.getByRole('link', { name: 'source' })).toHaveAttribute('href', 'https://github.com/GaussRun/super-secret-notes');
+		await expect(info.getByRole('link', { name: 'the trust model' })).toHaveAttribute('href', /\/trust\/$/);
+	}
+	await expect(page.getByRole('heading', { name: 'About', level: 1 })).toBeVisible();
+	for (const path of ['/how-it-works/', '/thanks/', '/trust/', '/hosts/', '/setup/', '/recover/', '/settings/']) {
+		await page.goto(url(path));
+		await expect(page.locator('main')).toBeVisible();
+		await expect(page.getByTestId('site-info')).toHaveCount(0);
+		await expect(page.locator('body')).not.toContainText('whoever serves it could change it');
+	}
+});

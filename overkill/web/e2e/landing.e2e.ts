@@ -77,7 +77,7 @@ test('the menu: keyboard open and close with focus handling, every link works, n
 
 	const expected: [string, string][] = [
 		['My notes', '/notes/'], ['New note', '/new/'], ['Check copies', '/check/'], ['Status', '/status/'], ['Hosts', '/hosts/'],
-		['Settings', '/settings/'], ['Vault access', '/recovery-kit/'], ['How it works', '/how-it-works/'], ['Thanks', '/thanks/'], ['Trust model', '/trust/']
+		['Settings', '/settings/'], ['Vault access', '/recovery-kit/'], ['How it works', '/how-it-works/'], ['Thanks', '/thanks/'], ['Trust model', '/trust/'], ['About', '/about/']
 	];
 	for (const [label, path] of expected) {
 		await button.click();

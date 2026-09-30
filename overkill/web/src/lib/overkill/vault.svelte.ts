@@ -15,7 +15,7 @@ import { logger } from './shims/log.js';
 import { activity } from './activity.svelte';
 import { FILES, readBlob, writeBlob, clearAll, clearStored, blobIo, goEphemeral, endEphemeral, saveBackup, readBackup, dropBackup, type VaultBackup } from './idb';
 import { handoffLink, plainText } from './qr';
-import { loadHosts, backendConfigs, type BackendCfg } from './settings';
+import { loadHosts, planHosts, type BackendCfg, type Hosts } from './settings';
 import { makeBackends, supported, TRAVELS_WITH_SECRETS, type Adapter } from './backends';
 import { isStrongEnough, estimateBits, MIN_BITS } from './passphrase';
 import { rememberName, rememberedName } from './credentials';
@@ -191,10 +191,10 @@ class VaultState {
 	 * `replace`: this browser already holds a vault; the new one takes its place only once it is
 	 * made (if anything fails, the old files come back). The old one stays on its hosts.
 	 */
-	async create({ name, passphrase, generated = null, ephemeral = false, replace = false }: { name: string; passphrase: string; generated?: string | null; ephemeral?: boolean; replace?: boolean }) {
+	async create({ name, passphrase, generated = null, ephemeral = false, replace = false, plan = null }: { name: string; passphrase: string; generated?: string | null; ephemeral?: boolean; replace?: boolean; plan?: { backends: BackendCfg[]; fallbacks: Hosts['fallbacks'] } | null }) {
 		if (!validVaultName(name)) throw new Error('vault name: letters, digits, space, dot, dash or underscore (up to 63)');
 		if (!isStrongEnough(passphrase)) throw new Error(`that passphrase is about ${Math.round(estimateBits(passphrase))} bits; a new vault wants ${MIN_BITS}+ (6 random words)`);
-		return this.#taking({ replace, ephemeral }, () => this.#create(name, passphrase, generated));
+		return this.#taking({ replace, ephemeral }, () => this.#create(name, passphrase, generated, plan ?? planHosts()));
 	}
 
 	/**
@@ -234,8 +234,9 @@ class VaultState {
 		}
 	}
 
-	async #create(name: string, passphrase: string, generated: string | null) {
-		const cfg: VaultCfg = { v: 1, name: name.normalize('NFC'), root: DEFAULT_ROOT, backends: backendConfigs(loadHosts()) };
+	async #create(name: string, passphrase: string, generated: string | null, plan: { backends: BackendCfg[]; fallbacks: Hosts['fallbacks'] }) {
+		// this vault's own hosts (a random draw from the pools, unless Settings fixes them)
+		const cfg: VaultCfg = { v: 1, name: name.normalize('NFC'), root: DEFAULT_ROOT, backends: plan.backends.map((b) => ({ ...b })) };
 		const vault = await c.createVault();
 		const vaultBytes = await step('stretching the passphrase with scrypt (slow on purpose)', () => c.encryptVault(vault, passphrase));
 		const keys = await c.unlockKeys(vault);
@@ -251,7 +252,7 @@ class VaultState {
 		// best effort: every host on its own deadline; a default that fails gets a known-good stand-in
 		const hosts = loadHosts();
 		const picker = fallbackPicker(cfg, {
-			lists: hosts.fallbacks,
+			lists: plan.fallbacks,
 			make: (bc: BackendCfg) => makeBackends({ root: cfg.root, backends: [bc] }, this.#secrets!, { nostrPauseMs: hosts.nostrPauseMs, timeouts: hosts.timeouts })[0]
 		});
 		const res = await step(`uploading vault.age to ${store.backends.length} hosts`, () => store.uploadVault({ next: (b: Adapter) => picker.next(b) }), (r) => `vault.age on ${r.filter((x) => x.ok).length}/${r.length} hosts`);
@@ -271,7 +272,8 @@ class VaultState {
 			swaps,
 			indexLocal: store.remoteIndex && !indexRes.some((r: { ok: boolean }) => r.ok),
 			// null: no relays configured for the record at all
-			recordRelays: hosts.discovery.length ? (record ? record.filter((x: { ok: boolean }) => x.ok).length : 0) : null
+			// counted on the fixed discovery relays only: that is where recovery by name looks
+			recordRelays: hosts.discovery.length ? (record ? record.filter((x: { ok: boolean; relay: string }) => x.ok && hosts.discovery.includes(x.relay)).length : 0) : null
 		};
 	}
 
@@ -312,6 +314,31 @@ class VaultState {
 		return handoffLink(recoverUrl, this.cfg!.name!, this.#pass!);
 	}
 
+	/**
+	 * The file "Download recovery kit" saves: name, passphrase and access link on top (what Recover
+	 * and the unlock form take in one paste), then the CLI's kit sheet (what `recover --kit` reads).
+	 * Made here in the page; nothing is uploaded.
+	 */
+	async kitFile(recoverUrl: string) {
+		const name = this.cfg!.name!;
+		return [
+			'SUPER SECRET NOTES  -  VAULT ACCESS AND RECOVERY KIT',
+			'',
+			'Store this somewhere safe and offline. Anyone with it can open your vault: all notes, and change them.',
+			'',
+			`vault name:   ${name}`,
+			`passphrase:   ${this.#pass}`,
+			`access link:  ${this.handoff(recoverUrl)}`,
+			'',
+			'To open the vault on another device: open the access link, or paste this whole file into',
+			'"Paste your access link or recovery kit" on the Recover page.',
+			'Command line: super-secret-notes recover --kit <this file>',
+			'',
+			await this.kit(),
+			''
+		].join('\n');
+	}
+
 	/** The vault name and passphrase as text, for a password manager or notes app. */
 	handoffText() {
 		return plainText(this.cfg!.name!, this.#pass!);
@@ -328,7 +355,9 @@ class VaultState {
 		if (!force && !publishDue(conf.published, hash)) return null;
 		try {
 			this.#discoverySecret ??= await step('deriving the discovery key (scrypt, a few seconds)', async () => (await bootstrap.discoveryIdentity(this.#pass!, conf.cfg.name!)).secret);
-			const results = await step(`publishing the recovery-by-name record to ${hosts.discovery.length} relays`, () => bootstrap.publishBootstrap(this.#pass!, conf.cfg.name!, this.#vaultBytes!, record, { relays: hosts.discovery, secret: this.#discoverySecret ?? undefined, pause: hosts.nostrPauseMs }), (r) => `recovery by name: record on ${r.filter((x: { ok: boolean }) => x.ok).length}/${r.length} relays`);
+			// the fixed discovery relays (where recovery by name looks), and the vault's own relays as well
+			const relays = [...new Set([...hosts.discovery, ...conf.cfg.backends.filter((b) => b.type === 'nostr').map((b) => String(b.url).replace(/\/+$/, ''))])];
+			const results = await step(`publishing the recovery-by-name record to ${relays.length} relays`, () => bootstrap.publishBootstrap(this.#pass!, conf.cfg.name!, this.#vaultBytes!, record, { relays, secret: this.#discoverySecret ?? undefined, pause: hosts.nostrPauseMs }), (r) => `recovery by name: record on ${r.filter((x: { ok: boolean }) => x.ok).length}/${r.length} relays`);
 			conf.published = { sha256: hash, at: new Date().toISOString() };
 			await this.#saveConfig();
 			return results;

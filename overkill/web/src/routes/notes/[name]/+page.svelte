@@ -17,6 +17,8 @@
 		nostr: 'The kind 30078 event(s) straight from this relay: content is the NIP-44 ciphertext over our two layers, signed by the vault key.',
 		blossom: 'The blob as served, base64: our extra AES-256-GCM layer over our two layers.'
 	};
+	// collapsed by default: one summary line and the first hosts; details (and raw copies) on request
+	let showAll = $state(false);
 	// the raw copy panel per host: closed, loading, or what the host serves
 	let raw = $state<Record<string, { loading: boolean; text?: string; format?: string; link?: string; error?: string }>>({});
 
@@ -149,54 +151,68 @@
 		{#if problems.length}<p class="warn small">Skipped on the way: {problems.map((p) => { const h = vault.hostOf(p.backend); return `${h ? `${typeName(h.type)} ${baseUrl(h.where) ?? ''}` : 'a host'} ${p.status}`; }).join(', ')}.</p>{/if}
 		{#if entry}<p class="muted small">Updated {entry.updated}. Blob id <span class="id">{entry.id}</span></p>{/if}
 
-		<details class="panel lives" data-testid="note-lives">
-			<summary>
-				<span class="lives-title">Where this note lives:</span>
-				<span class={summary.warn ? 'warn' : 'ok'} data-testid="lives-summary">{summary.text}</span>
-			</summary>
-			<div class="table-scroll">
-				<table data-testid="note-hosts" class="compact">
-					<thead><tr><th>Type</th><th>Where</th><th>Status</th><th>Last verified</th><th></th></tr></thead>
-					<tbody>
-						{#each hosts as h (h.name)}
-							<tr data-testid="host-{h.name}" data-backend={h.name}>
-								<td>
-									<HostType type={h.type} name={h.name} />
-									{#if readFrom?.backend === h.name}<span class="badge read" data-testid="read-from">read from here</span>{/if}
-								</td>
-								<td><HostLink where={h.where} /></td>
-								<td class="mono {h.status === 'ok' ? 'ok' : h.status === 'unknown' ? 'muted' : 'bad'}">{h.status.toUpperCase()}</td>
-								<td class="mono">{h.lastChecked && h.status === 'ok' && Date.now() - Date.parse(h.lastChecked) < 60_000 ? 'just now' : when(h.lastOk)}</td>
-								<td><button class="link" onclick={() => toggleRaw(h)} aria-expanded={Boolean(raw[h.name])} data-testid="raw-{h.name}">{raw[h.name] ? 'Hide raw copy' : 'View raw copy'}</button></td>
-							</tr>
-							{#if raw[h.name]}
-								{@const r = raw[h.name]}
-								<tr class="raw-row">
-									<td colspan="5" data-testid="raw-view-{h.name}">
-										{#if r.loading}
-											<p class="muted mono">Fetching what this host stores...</p>
-										{:else if r.error}
-											<p class="bad">{r.error}</p>
-										{:else}
-											<p class="small">{LAYERS[h.type] ?? 'The stored bytes, base64.'} Nothing is decrypted here.</p>
-											<pre class="raw" data-testid="raw-text">{r.text}</pre>
-											{#if r.link}
-												<p class="small">
-													<a href={r.link} target="_blank" rel="noopener noreferrer" data-testid="raw-link">{h.type === 'privatebin' ? 'Open in PrivateBin' : h.type === 'cryptpad' ? 'Open in CryptPad' : 'Open'}</a>
-													<span class="warn">This link contains {h.type === 'privatebin' ? "PrivateBin's" : "CryptPad's"} key for this copy; don't share it.</span>
-												</p>
-											{/if}
-										{/if}
+		<section class="lives" data-testid="note-lives">
+			<p class="lives-line">
+				<span data-testid="lives-summary" class={summary.warn ? 'warn' : ''}>{summary.text}</span>
+				{#if !showAll}<button class="link" onclick={() => (showAll = true)} data-testid="show-all">Show all details</button>{/if}
+			</p>
+			{#if !showAll}
+				<ul class="preview" data-testid="lives-preview">
+					{#each hosts.slice(0, 3) as h (h.name)}
+						<li data-backend={h.name}>
+							<HostType type={h.type} name={h.name} /> <span class="id">{baseUrl(h.where) ?? h.where}</span>
+							<span class={BAD.includes(h.status) ? 'warn' : ''}>{h.status === 'ok' ? 'OK' : h.status.toUpperCase()}</span>
+							{#if readFrom?.backend === h.name}<span class="badge read" data-testid="read-from">read from here</span>{/if}
+						</li>
+					{/each}
+					{#if hosts.length > 3}<li>and {hosts.length - 3} more</li>{/if}
+				</ul>
+			{:else}
+				<div class="table-scroll">
+					<table data-testid="note-hosts" class="compact">
+						<thead><tr><th>Type</th><th>Where</th><th>Status</th><th>Last verified</th><th></th></tr></thead>
+						<tbody>
+							{#each hosts as h (h.name)}
+								<tr data-testid="host-{h.name}" data-backend={h.name}>
+									<td>
+										<HostType type={h.type} name={h.name} />
+										{#if readFrom?.backend === h.name}<span class="badge read" data-testid="read-from">read from here</span>{/if}
 									</td>
+									<td><HostLink where={h.where} /></td>
+									<td class="mono {BAD.includes(h.status) ? 'warn' : ''}">{h.status.toUpperCase()}</td>
+									<td class="mono">{h.lastChecked && h.status === 'ok' && Date.now() - Date.parse(h.lastChecked) < 60_000 ? 'just now' : when(h.lastOk)}</td>
+									<td><button class="link" onclick={() => toggleRaw(h)} aria-expanded={Boolean(raw[h.name])} data-testid="raw-{h.name}">{raw[h.name] ? 'Hide raw copy' : 'View raw copy'}</button></td>
 								</tr>
-							{/if}
-						{/each}
-					</tbody>
-				</table>
-			</div>
-			<p class="muted small">From this browser's health ledger; UNKNOWN means not verified yet.</p>
-			<button class="secondary" onclick={checkNow} disabled={busy} data-testid="check-note">{busy ? 'Checking...' : 'Check all copies now'}</button>
-		</details>
+								{#if raw[h.name]}
+									{@const r = raw[h.name]}
+									<tr class="raw-row">
+										<td colspan="5" data-testid="raw-view-{h.name}">
+											{#if r.loading}
+												<p class="mono">Fetching what this host stores...</p>
+											{:else if r.error}
+												<p class="warn">{r.error}</p>
+											{:else}
+												<p>{LAYERS[h.type] ?? 'The stored bytes, base64.'} Nothing is decrypted here.</p>
+												<pre class="raw" data-testid="raw-text">{r.text}</pre>
+												{#if r.link}
+													<p>
+														<a href={r.link} target="_blank" rel="noopener noreferrer" data-testid="raw-link">{h.type === 'privatebin' ? 'Open in PrivateBin' : h.type === 'cryptpad' ? 'Open in CryptPad' : 'Open'}</a>
+														<span class="warn">This link contains {h.type === 'privatebin' ? "PrivateBin's" : "CryptPad's"} key for this copy; don't share it.</span>
+													</p>
+												{/if}
+											{/if}
+										</td>
+									</tr>
+								{/if}
+							{/each}
+						</tbody>
+					</table>
+				</div>
+				<p>From this browser's health ledger; UNKNOWN means not verified yet.</p>
+				<button class="secondary small-button" onclick={checkNow} disabled={busy} data-testid="check-note">{busy ? 'Checking...' : 'Check all copies now'}</button>
+				<button class="link" onclick={() => ((showAll = false), (raw = {}))} data-testid="show-less">Show less</button>
+			{/if}
+		</section>
 	{:else if !err}
 		<p class="muted mono">Peeling the layers...</p>
 	{/if}
@@ -208,9 +224,13 @@
 	.body { width: 100%; min-height: 12em; font-size: 0.95rem; }
 	.small { font-size: 0.85rem; }
 	.status { min-height: 2.6em; }
-	.badge.read { color: var(--cyan); margin-left: 6px; font-size: 0.75rem; border: 1px solid currentColor; border-radius: 8px; padding: 0 6px; white-space: nowrap; }
-	.lives summary { cursor: pointer; }
-	.lives-title { font-weight: 700; margin-right: 6px; }
+	.badge.read { color: var(--muted); margin-left: 6px; font-size: 0.72rem; border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+	.lives { color: var(--muted); font-size: 0.82rem; margin: 18px 0; }
+	.lives-line { margin: 0 0 4px; }
+	.lives .preview { list-style: none; padding: 0; margin: 0; }
+	.lives .preview li { margin: 2px 0; }
+	.lives table { color: var(--muted); }
+	.small-button { font-size: 0.8rem; padding: 4px 10px; }
 	table.compact { font-size: 0.85rem; }
 	table.compact td, table.compact th { padding: 3px 8px; }
 	.raw { max-height: 24em; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; background: var(--panel-2); padding: 8px; border-radius: 6px; margin: 4px 0; }

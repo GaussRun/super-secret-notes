@@ -1,27 +1,27 @@
 // Which hosts a NEW vault uses, and which relays hold the recovery-by-name record. Not secret,
 // so it lives in localStorage (wrapped: storage can be missing or throw). An existing vault
-// keeps the host list it was created with (in its encrypted config).
-import { INSTANCES, DEFAULT_COUNT as PB_COUNT } from '$cli/backends/privatebin.js';
-import { RELAYS, DEFAULT_COUNT as RELAY_COUNT } from '$cli/backends/nostr.js';
+// keeps the host list it was made with (in its encrypted config).
+// By default nothing is fixed: each new vault draws its hosts at random from known-good pools
+// that a browser can use (the CLI's pools.js); host lists saved in Settings replace the draw.
 import { SERVERS, DEFAULT_COUNT as BLOSSOM_COUNT } from '$cli/backends/blossom.js';
-import { DEFAULT_RELAYS } from '$cli/bootstrap.js';
-import { SIGNUP_INSTANCES } from '$cli/backends/cryptpad-adapter.js';
+import { DISCOVERY_RELAYS } from '$cli/bootstrap.js';
 import { CRYPTPAD_NO_BROWSER } from './backends';
 import { backendConfig } from '$cli/defaults-core.js';
-import { FALLBACKS } from '$cli/fallbacks.js';
-import { NO_BROWSER as PB_NO_BROWSER } from '$cli/backends/privatebin.js';
+import { pools, drawHosts, targetCounts } from '$cli/pools.js';
 
 export interface Hosts {
+	/** true: each new vault draws its PrivateBin, CryptPad and Nostr hosts from POOLS (the lists below are unused) */
+	draw: boolean;
 	privatebin: string[];
 	nostr: string[];
 	blossom: string[];
 	/** CryptPad instances with derived accounts (registered on first use) */
 	cryptpad: string[];
-	/** relays for the name + passphrase recovery record */
+	/** relays for the name + passphrase recovery record (fixed, well known) */
 	discovery: string[];
 	/** pause between two publishes to one relay (relays rate-limit per IP) */
 	nostrPauseMs: number;
-	/** setup fallbacks: known-good hosts that stand in for a default that fails, per type */
+	/** setup fallbacks for fixed lists: known-good hosts that stand in for one that fails, per type */
 	fallbacks: Record<'privatebin' | 'nostr' | 'cryptpad' | 'blossom', string[]>;
 	/** how long one host may take for one call before it counts as FAILED (ms) */
 	timeouts: { host: number; cryptpad: number; nostr: number };
@@ -42,43 +42,41 @@ export interface BackendCfg {
 
 const KEY = 'overkill.hosts';
 
+/** The known-good pools a page can use: PrivateBin instances that take posts from a page, CryptPad instances that allow other origins, the good relays. */
+export const POOLS: { privatebin: string[]; cryptpad: string[]; nostr: string[] } = pools({ browser: true, cryptpadNoBrowser: CRYPTPAD_NO_BROWSER });
+
+/** Blossom servers: opt-in (no encryption of their own), offered on /hosts. */
+export const BLOSSOM_OPT_IN: string[] = SERVERS.slice(0, BLOSSOM_COUNT);
+
 export function defaultHosts(): Hosts {
 	return {
-		privatebin: INSTANCES.slice(0, PB_COUNT),
-		nostr: RELAYS.slice(0, RELAY_COUNT),
-		// Blossom servers add no encryption of their own: not a default (they can still be added)
+		draw: true,
+		privatebin: [],
+		nostr: [],
+		// Blossom servers add no encryption of their own: not drawn (they can still be added)
 		blossom: [],
-		// the CLI's signup instances that let other origins use their API
-		cryptpad: SIGNUP_INSTANCES.filter((u: string) => !CRYPTPAD_NO_BROWSER.includes(new URL(u).host)),
-		discovery: [...DEFAULT_RELAYS],
+		cryptpad: [],
+		discovery: [...DISCOVERY_RELAYS],
 		nostrPauseMs: 3000,
-		// the CLI's fallbacks, minus hosts a browser page cannot use
-		fallbacks: {
-			privatebin: FALLBACKS.privatebin.filter((u: string) => !PB_NO_BROWSER.includes(u)),
-			nostr: [...FALLBACKS.nostr],
-			cryptpad: FALLBACKS.cryptpad.filter((u: string) => !CRYPTPAD_NO_BROWSER.includes(new URL(u).host)),
-			blossom: [...FALLBACKS.blossom]
-		},
+		fallbacks: { privatebin: [], nostr: [], cryptpad: [], blossom: [] },
 		timeouts: { ...DEFAULT_TIMEOUTS }
 	};
 }
 
-/** Known-good hosts that are not defaults: the two PrivateBin instances after the defaults also
- *  passed the browser probe (privatebin.js), and the Blossom servers are opt-in (no encryption of
- *  their own). Offered on /hosts. */
-export const ALTERNATIVES = {
-	privatebin: INSTANCES.slice(PB_COUNT, PB_COUNT + 2),
-	blossom: SERVERS.slice(0, BLOSSOM_COUNT)
-};
-
-/** Default host counts as the diagram and the copy show them: CryptPad counts every signup
- *  instance (the command line tool uses both; this browser can use fewer, see /how-it-works/). */
-export function defaultCounts() {
-	const d = defaultHosts();
-	return { privatebin: d.privatebin.length, cryptpad: SIGNUP_INSTANCES.length, nostr: d.nostr.length };
+/** How many hosts of each type a new vault gets in this browser (the targets, capped by the pools). */
+export function defaultCounts(): { privatebin: number; cryptpad: number; nostr: number } {
+	return targetCounts(POOLS);
 }
 
-export const KNOWN = { privatebin: INSTANCES, nostr: RELAYS, blossom: SERVERS, cryptpad: SIGNUP_INSTANCES };
+/** A new vault's hosts: drawn from the pools (the rest of each pool are its fallbacks), or the fixed lists. */
+export function planHosts(h: Hosts = loadHosts()): { backends: BackendCfg[]; fallbacks: Hosts['fallbacks'] } {
+	if (!h.draw) return { backends: backendConfigs(h), fallbacks: h.fallbacks };
+	const { chosen, rest } = drawHosts(POOLS);
+	return {
+		backends: backendConfigs({ ...h, privatebin: chosen.privatebin, cryptpad: chosen.cryptpad, nostr: chosen.nostr }),
+		fallbacks: { privatebin: rest.privatebin, cryptpad: rest.cryptpad, nostr: rest.nostr, blossom: [] }
+	};
+}
 
 const urls = (v: unknown): string[] | null =>
 	Array.isArray(v) && v.every((x) => typeof x === 'string') ? v.map((x) => x.trim().replace(/\/+$/, '')).filter(Boolean) : null;
@@ -91,11 +89,14 @@ export function loadHosts(): Hosts {
 	} catch {
 		saved = {};
 	}
+	const fixed = { privatebin: urls(saved.privatebin), nostr: urls(saved.nostr), cryptpad: urls(saved.cryptpad) };
 	return {
-		privatebin: urls(saved.privatebin) ?? d.privatebin,
-		nostr: urls(saved.nostr) ?? d.nostr,
+		// lists saved in Settings (or by tests) replace the random draw
+		draw: !fixed.privatebin && !fixed.nostr && !fixed.cryptpad,
+		privatebin: fixed.privatebin ?? d.privatebin,
+		nostr: fixed.nostr ?? d.nostr,
 		blossom: urls(saved.blossom) ?? d.blossom,
-		cryptpad: urls(saved.cryptpad) ?? d.cryptpad,
+		cryptpad: fixed.cryptpad ?? d.cryptpad,
 		discovery: urls(saved.discovery) ?? d.discovery,
 		nostrPauseMs: typeof saved.nostrPauseMs === 'number' && saved.nostrPauseMs >= 0 ? saved.nostrPauseMs : d.nostrPauseMs,
 		fallbacks: fallbacksFrom(saved.fallbacks, d.fallbacks),
@@ -124,7 +125,7 @@ export function saveHosts(h: Hosts | null): void {
 }
 
 /** Backend configs for a new vault, named exactly like the CLI names them. */
-export function backendConfigs(h: Hosts): BackendCfg[] {
+export function backendConfigs(h: Pick<Hosts, 'privatebin' | 'cryptpad' | 'nostr' | 'blossom'>): BackendCfg[] {
 	const taken = new Set<string>();
 	return [
 		...h.privatebin.map((u) => backendConfig('privatebin', u, taken)),

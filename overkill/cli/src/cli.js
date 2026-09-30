@@ -170,10 +170,12 @@ async function zeroConfigInit (opts) {
   out(bold('Super Secret Notes') + ': a note you cannot afford to lose, kept on many independent hosts, encrypted before it leaves.')
   out('No vault here yet, so let us make one. No accounts to sign up for, no config files.')
   const name = await askVaultName()
-  const cfg = { v: 1, name, root: opts.root ?? DEFAULT_ROOT, backends: defaultBackends({ home }) }
+  // this vault's own random draw from the known-good pools; the rest of each pool is its fallbacks
+  const drawn = defaultBackends({ home })
+  const cfg = { v: 1, name, root: opts.root ?? DEFAULT_ROOT, backends: [...drawn] }
   out(`Copies go to: ${cfg.backends.map((b) => b.name).join(', ')}`)
   const { pass, generated } = await newVaultPassphrase({ strict: true })
-  await setupVault(cfg, home, { pass, generated, scryptLogN: opts.scryptLogN, fresh: true })
+  await setupVault(cfg, home, { pass, generated, scryptLogN: opts.scryptLogN, fresh: true, fallbacks: drawn.fallbacks })
 }
 
 /** The vault name: with the passphrase, it is all `recover --name` needs. */
@@ -207,7 +209,7 @@ async function init (opts) {
   await setupVault(cfg, home, { scryptLogN: opts.scryptLogN, root: opts.root, strict: !opts.from })
 }
 
-async function setupVault (cfg, home, { pass, generated, scryptLogN, root, strict, fresh }) {
+async function setupVault (cfg, home, { pass, generated, scryptLogN, root, strict, fresh, fallbacks }) {
   const f = files(home)
   if (root) cfg.root = root
   cfg.root ??= DEFAULT_ROOT
@@ -253,7 +255,7 @@ async function setupVault (cfg, home, { pass, generated, scryptLogN, root, stric
       }
     } else {
       // a zero-config vault fills in for a failed default host with the next known-good one
-      const picker = fresh ? fallbackPicker(cfg, { make: (bc) => createBackend(bc, { root: cfg.root, home, secrets: backends.secrets }) }) : null
+      const picker = fresh ? fallbackPicker(cfg, { ...(fallbacks ? { lists: fallbacks } : {}), make: (bc) => createBackend(bc, { root: cfg.root, home, secrets: backends.secrets }) }) : null
       const res = await store.uploadVault({ next: picker ? (b) => picker.next(b) : undefined })
       for (const r of res) out(`  ${r.backend.name}: vault.age ${r.ok ? green('uploaded') + (r.replaced ? ` (in place of ${r.replaced})` : '') : red('FAILED: ' + r.error.message)}`)
       const stored = res.filter((r) => r.ok).length

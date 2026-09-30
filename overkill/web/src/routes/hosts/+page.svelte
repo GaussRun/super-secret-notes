@@ -2,7 +2,10 @@
 	import { vault } from '$lib/overkill/vault.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
-	import { loadHosts, ALTERNATIVES } from '$lib/overkill/settings';
+	import { loadHosts, POOLS, BLOSSOM_OPT_IN, defaultCounts } from '$lib/overkill/settings';
+	import { typeName } from '$lib/hosttype';
+
+	const counts = defaultCounts();
 	import { to } from '$lib/link';
 	import HostType from '$lib/components/HostType.svelte';
 	import HostLink from '$lib/components/HostLink.svelte';
@@ -86,35 +89,38 @@
 	<p class="muted">Unlock (or <a href={to('/setup/')}>create</a>) a vault to see its hosts.</p>
 {/if}
 
-<div class="panel">
-	<h2 data-testid="defaults-heading">Defaults for a new vault ({hosts.privatebin.length + hosts.cryptpad.length + hosts.nostr.length + hosts.blossom.length} hosts in this browser)</h2>
-	{#each [['privatebin', hosts.privatebin], ['cryptpad', hosts.cryptpad], ['nostr', hosts.nostr], ['blossom', hosts.blossom]] as [type, list] (type)}
-		<h3>{type} ({(list as string[]).length})</h3>
-		<p class="muted small">{blurb[type as string]}</p>
-		<ul>{#each list as u (u)}<li class="id">{u}</li>{/each}</ul>
-	{/each}
-	<h3>recovery by name</h3>
-	<ul>{#each hosts.discovery as u (u)}<li class="id">{u}</li>{/each}</ul>
-	<p><a href={to('/settings/')}>Change them in Settings.</a> crypt.unredacted.org (a CLI default) only lets its own pages use its API, so a vault using it keeps that copy for the CLI.</p>
-</div>
-
-<div class="panel" data-testid="alternatives">
-	<h2>Known-good alternatives</h2>
-	<p class="muted">Not defaults, but checked and ready to add to a vault (the command line tool's repair can also swap a dead host for one of these).</p>
-	<h3>privatebin</h3>
-	<p class="muted small">They passed the same browser test as the defaults.</p>
-	<ul>
-		{#each ALTERNATIVES.privatebin as u (u)}
-			<li><span class="id">{u}</span>{#if vault.status === 'unlocked'} <button class="secondary use" type="button" onclick={() => ((addType = 'privatebin'), (addUrl = u))}>use</button>{/if}</li>
+<div class="panel" data-testid="pools">
+	{#if hosts.draw}
+		<h2 data-testid="defaults-heading">Hosts new vaults are drawn from</h2>
+		<p class="muted">Each new vault draws its own hosts at random from these known-good pools, one operator per host: {counts.privatebin} PrivateBin, {counts.cryptpad} CryptPad, {counts.nostr} Nostr. So not every vault sits on the same hosts. If a drawn host fails at setup, another one from the same pool takes its place.</p>
+		{#each [['privatebin', POOLS.privatebin], ['cryptpad', POOLS.cryptpad], ['nostr', POOLS.nostr]] as [type, list] (type)}
+			<h3>{typeName(type as string)} ({(list as string[]).length})</h3>
+			<p class="muted small">{blurb[type as string]}</p>
+			<ul>
+				{#each list as u (u)}
+					<li><span class="id">{u}</span>{#if vault.status === 'unlocked'} <button class="secondary use" type="button" onclick={() => ((addType = type as typeof addType), (addUrl = u as string))}>use</button>{/if}</li>
+				{/each}
+			</ul>
 		{/each}
-	</ul>
-	<h3>blossom (opt-in)</h3>
-	<p class="muted small">No encryption of their own (we add an AES-256-GCM layer), so they are not a default.</p>
+	{:else}
+		<h2 data-testid="defaults-heading">Hosts for a new vault (set in Settings)</h2>
+		{#each [['privatebin', hosts.privatebin], ['cryptpad', hosts.cryptpad], ['nostr', hosts.nostr], ['blossom', hosts.blossom]] as [type, list] (type)}
+			<h3>{typeName(type as string)} ({(list as string[]).length})</h3>
+			<p class="muted small">{blurb[type as string]}</p>
+			<ul>{#each list as u (u)}<li class="id">{u}</li>{/each}</ul>
+		{/each}
+	{/if}
+	<h3>Blossom (opt-in)</h3>
+	<p class="muted small">No encryption of their own (we add an AES-256-GCM layer), so they are never drawn; add one to a vault if you like.</p>
 	<ul>
-		{#each ALTERNATIVES.blossom as u (u)}
+		{#each BLOSSOM_OPT_IN as u (u)}
 			<li><span class="id">{u}</span>{#if vault.status === 'unlocked'} <button class="secondary use" type="button" onclick={() => ((addType = 'blossom'), (addUrl = u))}>use</button>{/if}</li>
 		{/each}
 	</ul>
+	<h3>Recovery by name</h3>
+	<p class="muted small">A fixed, well-known set: every vault's recovery record goes there (and to its own relays), and Recover asks them.</p>
+	<ul>{#each hosts.discovery as u (u)}<li class="id">{u}</li>{/each}</ul>
+	<p><a href={to('/settings/')}>Change them in Settings.</a> crypt.unredacted.org (in the command line tool's pool) only lets its own pages use its API, so it is not in the browser's pool.</p>
 </div>
 
 <style>

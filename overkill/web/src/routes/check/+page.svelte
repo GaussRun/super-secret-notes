@@ -17,6 +17,16 @@
 	const rows = $derived(report ? [['vault.age', report.vault], ...(report.index.length ? [['index', report.index]] : []), ...Object.entries(report.notes)] as [string, Copy[]][] : []);
 	const totals = $derived(report ? summarize(report) : null);
 	const allGood = $derived(totals ? totals.healthy === totals.total : false);
+	// volunteer hosts decay; that is routine as long as every item still has a healthy copy
+	const lost = $derived.by(() => {
+		if (!report) return [] as string[];
+		const none = (copies: { status: string }[]) => copies.length > 0 && !copies.some((x) => x.status === 'OK');
+		return [
+			...(none(report.vault) ? ['vault.age'] : []),
+			...(report.index.length && none(report.index) ? ['the index'] : []),
+			...Object.entries(report.notes as Record<string, { status: string }[]>).filter(([, copies]) => none(copies)).map(([n]) => `"${n}"`)
+		];
+	});
 
 	async function run(clear = true) {
 		busy = true;
@@ -94,9 +104,9 @@
 	{/if}
 
 	{#if report && totals}
-		<div class="panel verdict {allGood ? 'good' : 'bad-panel'}" data-testid="check-summary">
-			<div class="big mono">{allGood ? 'ALL COPIES HEALTHY' : 'DAMAGE DETECTED'}</div>
-			<div class="mono">{totals.healthy}/{totals.total} copies healthy{allGood ? '. Gloriously redundant.' : '. Repair re-uploads from a healthy copy.'}</div>
+		<div class="panel verdict {allGood ? 'good' : lost.length ? 'bad-panel' : 'repair-panel'}" data-testid="check-summary">
+			<div class="big mono">{allGood ? 'ALL COPIES HEALTHY' : lost.length ? `NO HEALTHY COPY OF ${lost.join(', ').toUpperCase()}` : `${totals.total - totals.healthy} ${totals.total - totals.healthy === 1 ? 'copy needs' : 'copies need'} repair`}</div>
+			<div class="mono">{totals.healthy}/{totals.total} copies healthy{allGood ? '. Gloriously redundant.' : lost.length ? '. Nothing here can rebuild those; try again later, or restore from another device.' : '. Normal for free volunteer hosts: every note still has a healthy copy, and Repair re-uploads the rest.'}</div>
 		</div>
 		<div class="panel table-scroll">
 			<table data-testid="check-table">
@@ -136,6 +146,8 @@
 	.big { font-size: 1.4rem; font-weight: 800; }
 	.good .big { color: var(--green); }
 	.bad-panel .big { color: var(--red); }
+	.repair-panel { border-color: var(--line); }
+	.repair-panel .big { color: var(--amber, var(--muted)); font-size: 1.1rem; }
 	.small { font-size: 0.8rem; }
 	.state { font-weight: 700; }
 	.label { overflow-wrap: anywhere; }

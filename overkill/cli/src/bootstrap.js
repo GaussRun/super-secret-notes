@@ -10,7 +10,11 @@ import * as nostr from './backends/nostr.js'
 import { logger } from './log.js'
 
 export const DISCOVERY_ROOT = 'overkill-discovery'
-export const DEFAULT_RELAYS = nostr.RELAYS.slice(0, nostr.DEFAULT_COUNT)
+// The fixed, well-known relays for the recovery record: every vault publishes there (besides its
+// own randomly drawn relays) and recovery by name asks them, so a vault's own draw never matters
+// for finding it. Changing this list strands records: only ever add.
+export const DISCOVERY_RELAYS = ['wss://nos.lol', 'wss://nostr.mom', 'wss://purplerelay.com', 'wss://nostr.oxtr.dev']
+export const DEFAULT_RELAYS = DISCOVERY_RELAYS
 const VAULT = 'vault.age'
 const BOOTSTRAP = 'bootstrap.json'
 

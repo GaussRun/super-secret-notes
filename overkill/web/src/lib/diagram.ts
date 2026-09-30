@@ -46,7 +46,7 @@ export const diagramDesc = (c: Counts) =>
 	`${n(c.privatebin, 'PrivateBin instance', 'PrivateBin instances')} (native AES-256-GCM, key in the link), ${n(c.cryptpad, 'CryptPad instance', 'CryptPad instances')} (native XSalsa20-Poly1305) ` +
 	`and ${n(c.nostr, 'Nostr relay', 'Nostr relays')} (native NIP-44: ChaCha20 and HMAC-SHA256): ${n(total(c), 'copy', 'copies')}. ` +
 	'Coming soon: MEGA, Proton Drive, Filen, Fileverse and Blossom. ' +
-	'Recovery: any one healthy copy plus your vault name and passphrase gives your note back.';
+	'Recovery: your vault name and passphrase find your vault through the recovery record on the discovery relays (or use the recovery kit); any one healthy copy is enough to read a note.';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -133,7 +133,7 @@ export function diagramSvg(layout: Layout, counts: Counts, { logoHref = (f: stri
 		const ry = last.y + rowHeight(last.g) + 30;
 		h = ry + 14;
 		parts.push(`<path class="dg-line dg-return" d="M${hx + 175} ${last.y + rowHeight(last.g)}V${ry}H98V${midY + 47}" marker-end="url(#dg-arrow)"/>`);
-		parts.push(`<text class="dg-return-text" x="400" y="${ry - 10}" text-anchor="middle">recover: any one healthy copy + your vault name and passphrase = your note back</text>`);
+		parts.push(`<text class="dg-return-text" x="400" y="${ry - 10}" text-anchor="middle">recover: vault name + passphrase find your vault (or the kit); any one healthy copy reads a note</text>`);
 		parts.push(packet(`M190 ${midY}H554`, 0, 2.4));
 		rows.slice(0, 4).forEach(({ y }, i) => parts.push(packet(`M554 ${midY}C600 ${midY} 600 ${y + 28} ${hx - 2} ${y + 28}`, 2.4 + i * 0.15, 2.4)));
 	} else {
@@ -151,8 +151,8 @@ export function diagramSvg(layout: Layout, counts: Counts, { logoHref = (f: stri
 		parts.push(`${totalText} x="${cx}" y="${bottom + 28}" text-anchor="middle">${esc(totalLine(counts))}</text>`);
 		const ry = bottom + 54;
 		parts.push(`<path class="dg-line dg-return" d="M${cx + 150} ${ry - 16}H346V45H322" marker-end="url(#dg-arrow)"/>`);
-		parts.push(`<text class="dg-return-text" x="${cx}" y="${ry + 4}" text-anchor="middle">recover: any one healthy copy + your</text>`);
-		parts.push(`<text class="dg-return-text" x="${cx}" y="${ry + 22}" text-anchor="middle">vault name and passphrase = your note back</text>`);
+		parts.push(`<text class="dg-return-text" x="${cx}" y="${ry + 4}" text-anchor="middle">recover: name + passphrase find your vault</text>`);
+		parts.push(`<text class="dg-return-text" x="${cx}" y="${ry + 22}" text-anchor="middle">(or the kit); one healthy copy reads a note</text>`);
 		h = ry + 36;
 		parts.push(packet(`M${cx} 80V252H10V${rows[0].y + 28}H22`, 0, 3));
 	}

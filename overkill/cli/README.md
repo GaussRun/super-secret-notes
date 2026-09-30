@@ -6,7 +6,7 @@ Part of **Super Secret Notes by GaussRun**. The command is `super-secret-notes` 
 **A note you cannot afford to lose, saved in many independent places, recoverable anywhere with
 a vault name plus passphrase.**
 
-![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 4 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305) and 4 Nostr relays (native NIP-44), 10 copies; coming soon: MEGA, Proton Drive, Filen, Fileverse and Blossom; any one healthy copy plus the vault name and passphrase brings it back](../web/static/diagram.svg)
+![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 4 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305) and 4 Nostr relays (native NIP-44), 10 copies; coming soon: MEGA, Proton Drive, Filen, Fileverse and Blossom; the vault name and passphrase find the vault (or the recovery kit does), and any one healthy copy is enough to read a note](../web/static/diagram.svg)
 
 ![super-secret-notes demo (recorded with an earlier set of defaults): one put to every zero-signup default host, check, a flipped byte on PrivateBin, fallback read, repair, then recovery on a new laptop from the vault name and passphrase](demo/overkill-cli.gif)
 
@@ -42,7 +42,7 @@ alias super-secret-notes="node $PWD/bin/super-secret-notes.js"
 ## Use
 
 On a machine with no vault, the first `put` sets one up: it asks for a vault name, generates
-a 6-word passphrase (write it down), stores copies on the 10 zero-signup defaults (4 PrivateBin
+a 6-word passphrase (write it down), stores copies on 10 zero-signup hosts drawn at random for this vault from known-good pools (4 PrivateBin
 instances, a CryptPad account on 2 instances, created for you with credentials derived from
 the vault, and 4 Nostr relays), and prints the recovery kit. No accounts to sign up for, no config files.
 
@@ -126,8 +126,8 @@ vault.age sits on public hosts, so a weak passphrase can be guessed offline. Int
 | `cryptpad` | **Experimental.** A CryptPad drive (cryptpad.fr or another instance), E2E, 1 GB free. Each file becomes an owned, pinned code pad; an overwrite swaps in a new pad and deletes the old one. | Origin, username and password; no 2FA accounts. It reuses 8 of CryptPad's own AGPL client modules, committed with their headers (`THIRD_PARTY.md`). |
 | `fileverse` | Opt-in. Fileverse dDocs: E2E, stored on IPFS and recorded on Gnosis. By default the vault derives a wallet, logs in with it (Privy SIWE, like their web app) and creates its Developer Space and API key on first use; nothing to keep. Their Acceptable Use Policy bans "backing up"; decide for yourself. | Nothing (`"derived": true`), or an API key from their web app. |
 | `rclone` | Any rclone remote (Proton Drive, Koofr, Filen, B2, R2, ...). | `rclone config` first, then give the remote name (and optionally a config file). |
-| `privatebin` | One public PrivateBin instance (volunteer-run, "never" expiry, its own AES layer, no account). The defaults are the first 4 of the 11 verified instances in `src/backends/privatebin.js`; each becomes its own backend. | A URL. |
-| `nostr` | EXPERIMENTAL. One public Nostr relay. Blobs become kind 30078 events, NIP-44 encrypted to a key derived from your vault (no account, no extra secret), chunked above 30 KB. Relays promise no retention, so run `super-secret-notes refresh` from cron: it republishes Nostr copies older than 30 days. The defaults are 4 verified relays; each becomes its own backend. See `docs/NOSTR.md` for the relay probe. | A `wss://` URL. |
+| `privatebin` | One public PrivateBin instance (volunteer-run, "never" expiry, its own AES layer, no account). New vaults draw 4 at random from the verified instances in `src/backends/privatebin.js` (`src/pools.js`); each becomes its own backend. | A URL. |
+| `nostr` | EXPERIMENTAL. One public Nostr relay. Blobs become kind 30078 events, NIP-44 encrypted to a key derived from your vault (no account, no extra secret), chunked above 30 KB. Relays promise no retention, so run `super-secret-notes refresh` from cron: it republishes Nostr copies older than 30 days. New vaults draw 4 at random from the verified relays; each becomes its own backend. See `docs/NOSTR.md` for the relay probe. | A `wss://` URL. |
 | `blossom` | EXPERIMENTAL. One Blossom blob server (Nostr-authenticated HTTP blob storage, no account). Blobs get a third AES-GCM layer, uploads are signed with a key derived from your vault; like PrivateBin it keeps path to blob URL locators (notes and vault.age, never the index). Not a default, because Blossom adds no encryption of its own: add one with `init --advanced` or `hosts add`; 3 servers that accept arbitrary bytes are offered (most Blossom servers are media-only). Existing vaults with Blossom backends keep using them. See `docs/NOSTR.md`. | An `https://` URL. |
 | `local` | A folder. USB stick, NAS, whatever. | A path. |
 

@@ -22,12 +22,14 @@
 		e.preventDefault();
 		err = '';
 		msg = '';
-		const next: Hosts = { privatebin: parse(privatebin), nostr: parse(nostr), blossom: parse(blossom), cryptpad: parse(cryptpad), discovery: parse(discovery), nostrPauseMs: Number(pause) || 0, fallbacks: h.fallbacks, timeouts: h.timeouts };
+		const next: Hosts = { draw: false, privatebin: parse(privatebin), nostr: parse(nostr), blossom: parse(blossom), cryptpad: parse(cryptpad), discovery: parse(discovery), nostrPauseMs: Number(pause) || 0, fallbacks: h.fallbacks, timeouts: h.timeouts };
+		// all three lists empty: keep drawing new vaults' hosts at random from the pools
+		const draw = !next.privatebin.length && !next.nostr.length && !next.cryptpad.length;
 		for (const u of [...next.privatebin, ...next.blossom, ...next.cryptpad]) if (!/^https:\/\//.test(u) && !/^http:\/\/127\.0\.0\.1[:/]/.test(u)) return (err = `not an https URL: ${u}`);
 		for (const u of [...next.nostr, ...next.discovery]) if (!/^wss:\/\//.test(u) && !/^ws:\/\/127\.0\.0\.1[:/]/.test(u)) return (err = `not a wss URL: ${u}`);
-		if (!next.nostr.length) return (err = 'at least one Nostr relay: the index lives there');
+		if (!draw && !next.nostr.length && !next.cryptpad.length) return (err = 'at least one Nostr relay or CryptPad instance: the index lives there');
 		try {
-			saveHosts(next);
+			saveHosts(draw ? ({ ...next, privatebin: undefined, nostr: undefined, cryptpad: undefined } as unknown as Hosts) : next);
 			msg = 'Saved. New vaults use these hosts; recovery by name asks these relays.';
 		} catch (x) {
 			err = (x as Error).message;
@@ -53,7 +55,7 @@
 <h1>Settings</h1>
 <form class="panel" onsubmit={save}>
 	<h2>Hosts for a new vault</h2>
-	<p class="muted">One URL per line. An existing vault keeps the hosts it was made with.</p>
+	<p class="muted">One URL per line. An existing vault keeps the hosts it was made with. Leave PrivateBin, Nostr and CryptPad empty to let each new vault draw its own hosts at random from the <a href={to('/hosts/')}>known-good pools</a> (the default).</p>
 	<label for="s-pb">PrivateBin instances</label>
 	<textarea id="s-pb" class="short" bind:value={privatebin}></textarea>
 	<label for="s-nostr">Nostr relays (they hold the index)</label>

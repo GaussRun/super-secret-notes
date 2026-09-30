@@ -5,8 +5,9 @@
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { vault, MIN_COPIES } from '$lib/overkill/vault.svelte';
 	import { generatePassphrase, generateVaultName, generateNoteName, estimateBits, isStrongEnough, MIN_BITS } from '$lib/overkill/passphrase';
-	import { loadHosts, backendConfigs } from '$lib/overkill/settings';
-	import { storeCredential, rememberedName } from '$lib/overkill/credentials';
+	import { loadHosts, planHosts } from '$lib/overkill/settings';
+	import { storeCredential, rememberedName, canStoreCredential } from '$lib/overkill/credentials';
+	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import { validVaultName } from '$cli/defaults-core.js';
@@ -59,7 +60,52 @@
 	const stored = $derived(done ? done.hosts.filter((h) => h.ok).length : 0);
 	const failedHosts = $derived(done ? done.hosts.filter((h) => !h.ok) : []);
 	const hosts = loadHosts();
-	const planned = backendConfigs(hosts);
+	// this vault's own random draw from the pools (shown below, and used as is)
+	const plan = planHosts(hosts);
+	const planned = plan.backends;
+
+	// the recovery kit file, downloaded when the vault is made (not on a public computer: that
+	// would leave the keys in its downloads folder)
+	let downloadKit = $state(!quick);
+	let kitTouched = false;
+	$effect(() => {
+		const pub = publicMode;
+		if (!kitTouched) downloadKit = !pub;
+	});
+	let kitDownloaded = $state(false);
+	async function saveKit() {
+		const text = await vault.kitFile(new URL(to('/recover/'), location.href).href);
+		const href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+		const a = document.createElement('a');
+		a.href = href;
+		a.download = `super-secret-notes-recovery-kit-${vault.cfg?.name ?? 'vault'}.txt`;
+		document.body.append(a);
+		a.click();
+		a.remove();
+		setTimeout(() => URL.revokeObjectURL(href), 60_000);
+		kitDownloaded = true;
+	}
+	async function copyAccess() {
+		try {
+			await navigator.clipboard.writeText(vault.handoff(new URL(to('/recover/'), location.href).href));
+			accessCopied = true;
+		} catch {
+			err = 'this browser would not copy; use Share this vault below';
+		}
+	}
+	let accessCopied = $state(false);
+
+	// typed but not made yet: ask before leaving, in the app and for the whole tab
+	const dirty = $derived(!done && !busy && noteText.trim().length > 0);
+	beforeNavigate((nav) => {
+		if (dirty && nav.type !== 'leave' && !confirm('Your note is not stored yet. Leave anyway?')) nav.cancel();
+	});
+	$effect(() => {
+		if (!dirty) return;
+		const guard = (e: BeforeUnloadEvent) => e.preventDefault();
+		window.addEventListener('beforeunload', guard);
+		return () => window.removeEventListener('beforeunload', guard);
+	});
 
 	const bits = $derived(Math.round(estimateBits(passphrase)));
 	const strong = $derived(isStrongEnough(passphrase));
@@ -96,7 +142,7 @@
 		activity.clear();
 		try {
 			const vaultName = name.normalize('NFC');
-			const res = await vault.create({ name: vaultName, passphrase, generated: passphrase === generated ? generated : null, ephemeral: publicMode, replace: replacing && !publicMode });
+			const res = await vault.create({ name: vaultName, passphrase, generated: passphrase === generated ? generated : null, ephemeral: publicMode, replace: replacing && !publicMode, plan });
 			let note: string | null = null;
 			let results: { backend: string; ok: boolean; error?: string }[] = res.hosts;
 			if (!skip) {
@@ -107,6 +153,7 @@
 			// on a public computer the browser must not keep it
 			const savedToManager = publicMode ? false : await storeCredential(vaultName, passphrase);
 			done = { vaultName, passphrase, hosts: results.map((r) => ({ backend: r.backend, ok: r.ok, error: r.error })), note, savedToManager, swaps: res.swaps, indexLocal: res.indexLocal, recordRelays: res.recordRelays };
+			if (downloadKit) await saveKit().catch(() => {});
 		} catch (x) {
 			err = (x as Error).message;
 		} finally {
@@ -185,6 +232,11 @@
 	<div class="panel save" data-testid="save-step">
 		<h2>Save these in your password manager</h2>
 		<p>They are all you need to get your notes back, on any device. Also keep the kit.</p>
+		<div class="row">
+			<button type="button" onclick={saveKit} data-testid="download-kit">{kitDownloaded ? 'Download recovery kit again' : 'Download recovery kit'}</button>
+			<button type="button" class="secondary" onclick={copyAccess} data-testid="copy-recovery-link">{accessCopied ? 'Copied' : 'Copy recovery link'}</button>
+		</div>
+		{#if kitDownloaded}<p class="muted small" data-testid="kit-downloaded">The recovery kit went to your downloads. Move it somewhere safe and offline.</p>{/if}
 		<dl>
 			<dt>Vault name</dt>
 			<dd class="id" data-testid="done-name">{done.vaultName}</dd>
@@ -193,23 +245,24 @@
 		</dl>
 		<button type="button" class="secondary" onclick={() => (show = !show)}>{show ? 'Hide' : 'Show'}</button>
 		<button type="button" class="secondary" onclick={() => copy(done!.passphrase)}>{copied ? 'Copied' : 'Copy passphrase'}</button>
-		{#if !vault.ephemeral}
+		{#if !vault.ephemeral && canStoreCredential()}
 			<button type="button" onclick={saveToManager}>{done.savedToManager ? 'Saved to the password manager' : 'Save in password manager'}</button>
 		{/if}
 		<a class="button secondary" href={to('/recovery-kit/')}>Print the kit</a>
 	</div>
 
 	<ShareVault />
-{:else}
+{/if}
+<!-- stays in the page after success (hidden), so browsers still see the submitted login form and offer to save it -->
+<div hidden={Boolean(done)} data-testid="setup-page">
 	<h1>{quick ? 'Throwaway vault: write your note' : 'Write your first secret note'}</h1>
 	{#if quick}<p class="warn">A made-up vault name and passphrase, kept in this tab only. Write the note, then scan the QR on the next screen with your phone.</p>{/if}
 	{#if vault.status === 'loading'}
 		<p class="muted mono">Checking your clearance level...</p>
 	{:else}
 		{#if replacing}
-			<p class="warn" data-testid="replace-note">
-				This browser holds the vault {#if current}<strong class="id">{current}</strong>{/if}. A new vault takes its place here once it is made; the old one stays on its hosts and comes back with <a href={to('/recover/')}>Recover</a> (its vault name and passphrase).
-				<a href={to(vault.status === 'unlocked' ? '/notes/' : '/unlock/')}>Open it instead</a>
+			<p class="muted small" data-testid="replace-note">
+				This browser currently remembers {#if current}<span class="id">{current}</span>{:else}another vault{/if}. It stays safe on its hosts; you can open it again with its name and passphrase (<a href={to(vault.status === 'unlocked' ? '/notes/' : '/unlock/')}>open it now</a>).
 			</p>
 		{/if}
 		<form method="post" action="#" onsubmit={create} data-testid="setup-form">
@@ -247,6 +300,8 @@
 					{#if !nameOk}<p class="bad small">Vault name: letters, digits, space, dot, dash or underscore (up to 63), starting with a letter or digit.</p>{/if}
 				{/if}
 				<PublicComputer bind:checked={publicMode} />
+				<label class="check"><input type="checkbox" bind:checked={downloadKit} onchange={() => (kitTouched = true)} data-testid="kit-checkbox" /> Download recovery kit when done</label>
+				{#if publicMode}<p class="muted small" data-testid="kit-public-note">Off on a public computer: the file would stay in its downloads folder. Use the QR on the next screen instead.</p>{/if}
 				<details>
 					<summary class="muted small">Where the copies go ({planned.length} hosts, no accounts)</summary>
 					<ul class="hosts">
@@ -260,7 +315,7 @@
 			<p><a href={to('/recover/')}>Recover an existing vault instead</a></p>
 		</form>
 	{/if}
-{/if}
+</div>
 
 <ActivityLog title="Vault construction log" />
 
@@ -275,6 +330,8 @@
 	.compact input[readonly] { color: var(--green); border-style: dashed; }
 	@media (max-width: 640px) { .compact .cred { grid-template-columns: 1fr; } }
 	.small-buttons { gap: 2px; }
+	.check { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; }
+	.check input { width: auto; }
 	.name-row { display: flex; gap: 6px; align-items: center; }
 	.name-row input { flex: 1; }
 	.hosts, .host-results { padding-left: 18px; }

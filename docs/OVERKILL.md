@@ -102,12 +102,26 @@ Released open source under AGPL-3.0-or-later. Reason: the Filen SDK (`@filen/sdk
 client modules are AGPL-3.0; everything else in use is MIT or BSD-3-Clause, which is compatible.
 
 ## Defaults: zero-signup first
-Default backends are hosts that one CLI command can use with no email, no captcha and no manual signup:
-1. PrivateBin instances (no account; `never` expiry; list above): the first 4.
-2. Nostr relays (NIP-78 kind 30078 + NIP-44; the key is derived, no account): 4.
+Default backends are hosts that one CLI command can use with no email, no captcha and no manual signup.
+Random draw from known-good pools: new vaults do not all sit on the same hosts.
+At creation each vault draws its own hosts at random (crypto.getRandomValues, no modulo bias) from
+per-type pools (`overkill/cli/src/pools.js`), one operator per host, the smallest pool first:
+1. PrivateBin instances (no account; `never` expiry; list above, minus paste.coalserver.de; in the browser
+   also minus instances that refuse posts from a page, paste.evolix.org): 4.
+2. Nostr relays (NIP-78 kind 30078 + NIP-44; the key is derived, no account; the good-retention relays of
+   overkill/cli/docs/NOSTR.md, never relay.damus.io): 4.
 3. CryptPad instances with automated signup, only where registration is open, no captcha, and the ToS allows
-   it (one account per instance): 2.
-That is 10 copies. Blossom servers are not a default (since 2026-09-30): they add no encryption of their
+   it (one account per instance): 2 (in the browser only those whose API allows other origins: 1).
+That is 10 copies from the CLI, 9 from a browser. The draw guarantees at least one host of each type and at
+least one index holder (CryptPad or Nostr). The choice is saved in the vault config and travels in the
+bootstrap as before; the rest of each pool is the setup fallbacks. With a host cache (`hosts refresh`) the
+CLI draws from its hosts not known to fail, directory finds included. Host lists saved in the web app's
+Settings replace the draw there.
+
+The recovery record does not depend on the draw: it always goes to the fixed, well-known
+`DISCOVERY_RELAYS` (`overkill/cli/src/bootstrap.js`: nos.lol, nostr.mom, purplerelay.com, nostr.oxtr.dev;
+only ever add to that list), besides the vault's own relays, and `recover --name` and /recover/ ask the
+fixed set. Old vaults (made with the fixed defaults) keep working unchanged. Blossom servers are not a default (since 2026-09-30): they add no encryption of their
 own. They stay available as an opt-in (`init --advanced`, `hosts add`), and vaults that already have
 Blossom backends keep using them unchanged.
 Second priority, opt-in: Proton Drive, MEGA, Filen (need a manual signup with email/captcha/verification).

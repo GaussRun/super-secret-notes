@@ -7,6 +7,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultBackends, validVaultName } from '../src/defaults.js'
+import { pools, TARGETS, drawHosts } from '../src/pools.js'
+import { site } from '../src/defaults-core.js'
 
 const BIN = fileURLToPath(new URL('../bin/super-secret-notes.js', import.meta.url))
 const STRONG = 'smite idealism emphasis overeater canal fever'
@@ -20,17 +22,32 @@ function cli (env, args, input) {
   })
 }
 
-test('defaults: 4 PrivateBin, 2 CryptPad with derived accounts, 4 Nostr relays, no Blossom (10, all with their own encryption)', () => {
-  const d = defaultBackends({ cryptpad: true })
+test('defaults: a random draw of 4 PrivateBin, 2 CryptPad with derived accounts, 4 Nostr relays from the pools, no Blossom', () => {
   assert.ok(!defaultBackends({ cryptpad: false }).some((b) => b.type === 'cryptpad'))
-  assert.equal(d.length, 10)
-  assert.deepEqual(d.map((b) => b.name), ['pb-envs', 'pb-systemli', 'pb-extrait', 'pb-disroot', 'cp-private', 'cp-unredacted',
-    'nostr-nos', 'nostr-mom', 'nostr-purplerelay', 'nostr-oxtr'])
-  assert.deepEqual(d.filter((b) => b.type === 'privatebin').map((b) => b.url), ['https://pb.envs.net', 'https://paste.systemli.org', 'https://extrait.facil.services', 'https://bin.disroot.org'])
-  assert.ok(!d.some((b) => b.type === 'blossom'), 'Blossom does not encrypt: opt-in only')
-  assert.deepEqual(d.filter((b) => b.type === 'nostr').map((b) => b.url), ['wss://nos.lol', 'wss://nostr.mom', 'wss://purplerelay.com', 'wss://nostr.oxtr.dev'])
-  assert.deepEqual(d.filter((b) => b.type === 'cryptpad').map((b) => [b.origin, b.derived]),
-    [['https://cryptpad.private.coffee', true], ['https://crypt.unredacted.org', true]])
+  const p = pools()
+  const selections = new Set()
+  for (let i = 0; i < 200; i++) {
+    const d = defaultBackends({ cryptpad: true })
+    const of = (t) => d.filter((b) => b.type === t)
+    assert.equal(of('privatebin').length, TARGETS.privatebin)
+    assert.equal(of('cryptpad').length, TARGETS.cryptpad)
+    assert.equal(of('nostr').length, TARGETS.nostr)
+    assert.equal(d.length, 10)
+    assert.ok(!d.some((b) => b.type === 'blossom'), 'Blossom does not encrypt: opt-in only')
+    for (const b of d) assert.ok(p[b.type].includes(b.url ?? b.origin), `${b.url ?? b.origin} is in the ${b.type} pool`)
+    assert.ok(of('cryptpad').every((b) => b.derived))
+    // one operator per host, and names unique
+    const ops = d.map((b) => site(b.url ?? b.origin))
+    assert.equal(new Set(ops).size, ops.length)
+    assert.equal(new Set(d.map((b) => b.name)).size, d.length)
+    // the rest of each pool is left for fallbacks, never overlapping the draw
+    for (const [t, rest] of Object.entries(d.fallbacks)) for (const u of rest) assert.ok(!d.some((b) => (b.url ?? b.origin) === u), `${t} fallback ${u} is not drawn`)
+    selections.add(d.map((b) => b.url ?? b.origin).sort().join(' '))
+  }
+  // different vaults get different hosts
+  assert.ok(selections.size > 50, `${selections.size} different selections in 200 draws`)
+  assert.ok(!p.nostr.includes('wss://relay.damus.io'))
+  assert.ok(!p.privatebin.includes('https://paste.coalserver.de'))
   assert.ok(validVaultName('Oma\'s Rezepte'.replace("'", '')))
   assert.ok(!validVaultName('../etc'))
   assert.ok(!validVaultName(''))
@@ -186,4 +203,20 @@ test('bootstrap record: login-free backends travel (paste-like ones with their v
   assert.deepEqual(rec.cryptpad, [{ instance: 'https://cryptpad.private.coffee', username: creds.username }])
   assert.doesNotMatch(JSON.stringify(rec), /secret|a@example\.com|index\.ovk/) // no logins, no ever-changing index locator
   assert.match(rec.main_npub, /^npub1/)
+})
+
+test('pools: the browser draw leaves out hosts a page cannot use; at least one of each type and one index holder', () => {
+  const browser = pools({ browser: true, cryptpadNoBrowser: ['crypt.unredacted.org'] })
+  assert.ok(!browser.privatebin.includes('https://paste.evolix.org'))
+  assert.deepEqual(browser.cryptpad, ['https://cryptpad.private.coffee'])
+  for (let i = 0; i < 200; i++) {
+    const { chosen } = drawHosts(browser)
+    assert.equal(chosen.cryptpad.length, 1) // as many as the browser pool allows
+    assert.equal(chosen.privatebin.length, 4)
+    assert.equal(chosen.nostr.length, 4)
+    assert.ok(!chosen.privatebin.includes('https://paste.evolix.org'))
+  }
+  // a draw that could leave a type empty or no index holder refuses
+  assert.throws(() => drawHosts({ privatebin: ['https://a.example'], cryptpad: [], nostr: [] }, { privatebin: 1, cryptpad: 1, nostr: 1 }), /no cryptpad host/)
+  assert.throws(() => drawHosts({ privatebin: ['https://a.example'], cryptpad: [], nostr: [] }, { privatebin: 1, cryptpad: 0, nostr: 0 }), /keep the index/)
 })

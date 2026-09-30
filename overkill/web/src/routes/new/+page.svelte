@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { beforeNavigate } from '$app/navigation';
 	import Locked from '$lib/components/Locked.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
@@ -17,12 +18,25 @@
 	let err = $state('');
 	let saved = $state<{ name: string; ok: number; total: number; sampled: string[] } | null>(null);
 	let loaded = false;
+	// the text as last stored (or loaded for editing): anything else is not stored yet
+	let storedText = $state('');
+
+	const dirty = $derived(!busy && text.trim().length > 0 && text !== storedText);
+	beforeNavigate((nav) => {
+		if (dirty && nav.type !== 'leave' && !confirm('Your note is not stored yet. Leave anyway?')) nav.cancel();
+	});
+	$effect(() => {
+		if (!dirty) return;
+		const guard = (e: BeforeUnloadEvent) => e.preventDefault();
+		window.addEventListener('beforeunload', guard);
+		return () => window.removeEventListener('beforeunload', guard);
+	});
 
 	// Editing: pull the current text first.
 	$effect(() => {
 		if (editing && vault.status === 'unlocked' && !loaded) {
 			loaded = true;
-			vault.get(editing).then((n) => (text = n.text), (x) => (err = (x as Error).message));
+			vault.get(editing).then((n) => ((text = n.text), (storedText = n.text)), (x) => (err = (x as Error).message));
 		}
 	});
 
@@ -53,6 +67,7 @@
 		activity.clear();
 		try {
 			const r = await vault.put(name.trim(), text);
+			storedText = text;
 			saved = {
 				name: name.trim().normalize('NFC'),
 				ok: r.results.filter((x) => x.ok).length,

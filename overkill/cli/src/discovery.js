@@ -32,8 +32,10 @@ const stampFile = (home) => path.join(home, 'bootstrap-published.json')
  * -> null when skipped (unnamed vault, relays off, nothing to do), else [{ relay, ok, error }].
  */
 export async function publishIfNeeded ({ cfg, home, passphrase, vaultBytes, backends, keys, force = false }) {
-  const relays = discoveryRelays()
-  if (!cfg.name || !relays.length) return null
+  const fixed = discoveryRelays()
+  if (!cfg.name || !fixed.length) return null
+  // the fixed discovery relays, and the vault's own relays as well
+  const relays = [...new Set([...fixed, ...cfg.backends.filter((b) => b.type === 'nostr').map((b) => b.url.replace(/\/+$/, ''))])]
   const record = await bootstrapRecord(cfg, backends, keys)
   const hash = await core.recordHash(record, vaultBytes)
   const last = await readFile(stampFile(home), 'utf8').then(JSON.parse, () => null)

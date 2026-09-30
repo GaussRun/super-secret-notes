@@ -3,11 +3,14 @@
 import { test, expect } from '@playwright/test';
 import { url, watchErrors, ORIGIN } from './helpers';
 import { defaultBackends } from '../../cli/src/defaults.js';
+import { pools, targetCounts } from '../../cli/src/pools.js';
 
-// the defaults list is the source of every count the diagram shows
+// every count comes from what a new vault draws: in the browser from the browser's pools (the
+// page), in the command line tool from its own (the standalone diagram.svg for the READMEs)
+const PAGE = targetCounts(pools({ browser: true, cryptpadNoBrowser: ['crypt.unredacted.org'] }));
+const PAGE_TOTAL = PAGE.privatebin + PAGE.cryptpad + PAGE.nostr;
 delete process.env.OVERKILL_DEFAULT_BACKENDS;
-const DEFAULTS: { type: string }[] = defaultBackends({ cryptpad: true });
-const count = (t: string) => DEFAULTS.filter((b) => b.type === t).length;
+const CLI_TOTAL = defaultBackends({ cryptpad: true }).length;
 
 const PAGES = ['/', '/how-it-works/'];
 
@@ -49,13 +52,14 @@ for (const path of PAGES) {
 				await expect(svg.locator('.dg-mono-text')).toHaveCount(1);
 				await expect(svg.locator('[data-host="optin"] .dg-mono-text')).toHaveText('+5');
 				await expect(svg.locator('.dg-badge')).toHaveCount(0);
-				await expect(svg.locator('desc')).toContainText('any one healthy copy plus your vault name and passphrase');
+				await expect(svg.locator('desc')).toContainText('your vault name and passphrase find your vault through the recovery record on the discovery relays (or use the recovery kit); any one healthy copy is enough to read a note');
+				await expect(svg).not.toContainText('= your note back');
 				const total = svg.locator('.dg-total[data-total]');
-				await expect(total).toHaveAttribute('data-total', String(DEFAULTS.length));
-				await expect(total).toHaveText(`${count('privatebin')} PrivateBin + ${count('cryptpad')} CryptPad + ${count('nostr')} relays = ${DEFAULTS.length} copies`);
-				await expect(svg.locator('title')).toContainText(`on ${DEFAULTS.length} hosts`);
-				await expect(svg.locator('[data-host="privatebin"]')).toContainText(`${count('privatebin')} instances`);
-				if (path === '/how-it-works/') await expect(page.getByTestId('default-counts')).toContainText(`goes to ${DEFAULTS.length} zero-signup hosts: ${count('privatebin')} PrivateBin instances`);
+				await expect(total).toHaveAttribute('data-total', String(PAGE_TOTAL));
+				await expect(total).toHaveText(`${PAGE.privatebin} PrivateBin + ${PAGE.cryptpad} CryptPad + ${PAGE.nostr} relays = ${PAGE_TOTAL} copies`);
+				await expect(svg.locator('title')).toContainText(`on ${PAGE_TOTAL} hosts`);
+				await expect(svg.locator('[data-host="privatebin"]')).toContainText(`${PAGE.privatebin} instances`);
+				if (path === '/how-it-works/') await expect(page.getByTestId('default-counts')).toContainText(`here in the browser ${PAGE_TOTAL} zero-signup hosts (${PAGE.privatebin} PrivateBin instances, ${PAGE.cryptpad} CryptPad`);
 				for (const id of ['privatebin', 'cryptpad', 'nostr', 'optin']) await expect(svg.locator(`[data-host="${id}"]`)).toBeVisible();
 
 				// every logo: same origin, loaded
@@ -116,5 +120,13 @@ test('the standalone diagram.svg for the READMEs is served and self-contained', 
 	expect((svg.match(/href="data:image\/svg\+xml;base64,/g) ?? []).length).toBe(2);
 	expect((svg.match(/href="data:image\/png;base64,/g) ?? []).length).toBe(1);
 	expect(svg).not.toContain('data-host="blossom"');
-	expect(svg).toContain(`data-total="${DEFAULTS.length}"`);
+	expect(svg).toContain(`data-total="${CLI_TOTAL}"`);
+});
+
+test('/hosts/ lists the pools new vaults are drawn from (browser-usable hosts only)', async ({ page }) => {
+	await page.goto(url('/hosts/'));
+	const pools = page.getByTestId('pools');
+	await expect(page.getByTestId('defaults-heading')).toHaveText('Hosts new vaults are drawn from');
+	for (const u of ['https://pb.envs.net', 'https://cryptostorm.is/paste', 'https://paste.d-ku.de', 'https://cryptpad.private.coffee', 'wss://nos.lol', 'wss://schnorr.me']) await expect(pools).toContainText(u);
+	for (const u of ['https://paste.evolix.org', 'https://paste.coalserver.de', 'https://crypt.unredacted.org/', 'wss://relay.damus.io']) await expect(pools.locator('li', { hasText: u })).toHaveCount(0);
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { vault } from '$lib/overkill/vault.svelte';
 	import ThanksStrip from '$lib/components/ThanksStrip.svelte';
+	import SiteInfo from '$lib/components/SiteInfo.svelte';
 	import Diagram from '$lib/components/Diagram.svelte';
 	import { to } from '$lib/link';
 	import { rememberedName } from '$lib/overkill/credentials';
@@ -50,6 +51,8 @@
 </p>
 
 <ThanksStrip />
+
+<SiteInfo />
 
 <style>
 	.hero { min-height: max(440px, calc(100svh - 70px)); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px 0; }

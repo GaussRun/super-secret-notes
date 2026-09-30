@@ -5,35 +5,43 @@ import { startAllFakes, type Fakes } from './fakes';
 import { startFakeCryptpad } from './fake-cryptpad';
 import { url, useFakes, watchErrors, setupVault, putNote, recoverByName, readNote, nav, expectNoLeak, WORDLIST } from './helpers';
 
-let fakes: Fakes;
-let context: BrowserContext;
-let page: Page;
-let errors: string[];
-let passphrase = '';
 const VAULT = 'e2e Einkäufe';
 const NOTE = 'Einkaufsliste für Oma';
 const TEXT = 'milk, eggs, 3x more encryption\nline two';
 
-test.describe.configure({ mode: 'serial' });
+// Every test is self-contained: its own fake hosts, its own browser context, and the vault (and
+// note) it needs, made at its start. Nothing is carried from one test to the next.
+interface World {
+	fakes: Fakes;
+	context: BrowserContext;
+	page: Page;
+	errors: string[];
+	passphrase: string;
+}
+let w: World | null = null;
 
-test.beforeAll(async ({ browser }: { browser: Browser }) => {
-	fakes = await startAllFakes();
-	context = await browser.newContext();
+async function world(browser: Browser, { vault = false, note = false } = {}): Promise<World> {
+	const fakes = await startAllFakes();
+	const context = await browser.newContext();
 	await useFakes(context, fakes);
-	page = await context.newPage();
-	errors = watchErrors(page);
+	const page = await context.newPage();
+	const errors = watchErrors(page);
+	w = { fakes, context, page, errors, passphrase: '' };
+	if (vault || note) w.passphrase = await setupVault(page, VAULT);
+	if (note) await putNote(page, NOTE, TEXT);
+	return w;
+}
+
+test.afterEach(async () => {
+	const done = w;
+	w = null;
+	await done?.context.close();
+	await done?.fakes.close();
+	if (done) expect(done.errors, 'no CSP violations or page errors').toEqual([]);
 });
 
-test.afterAll(async () => {
-	await context?.close();
-	await fakes?.close();
-});
-
-test.afterEach(() => {
-	expect(errors, 'no CSP violations or page errors').toEqual([]);
-});
-
-test('setup form: note first, made-up 4-word vault name, password-manager fields', async () => {
+test('setup form: note first, made-up 4-word vault name, password-manager fields', async ({ browser }) => {
+	const { page } = await world(browser);
 	await page.goto(url('/setup/'));
 	const form = page.getByTestId('setup-form');
 	await expect(form).toHaveAttribute('method', 'post');
@@ -82,9 +90,11 @@ test('setup form: note first, made-up 4-word vault name, password-manager fields
 	await expect(form).toContainText('Your password manager can save this. Also keep the kit.');
 });
 
-test('setup: generated passphrase, vault.age on every host, the kit, the recovery record', async () => {
+test('setup: generated passphrase, vault.age on every host, the kit, the recovery record', async ({ browser }) => {
+	const { page, fakes } = await world(browser);
+	await page.goto(url('/setup/'));
 	const before = await page.evaluate(() => history.length);
-	passphrase = await setupVault(page, VAULT);
+	const passphrase = await setupVault(page, VAULT);
 	// the form submitted in JS: no request carried it, nothing in the URL or history
 	const seen = await expectNoLeak(page, passphrase);
 	expect(seen.length).toBeLessThanOrEqual(before + 1); // only the in-app move to /recovery-kit/
@@ -105,14 +115,16 @@ test('setup: generated passphrase, vault.age on every host, the kit, the recover
 	expect(fakes.pb[0].requests.filter((r) => r.startsWith('OPTIONS'))).toEqual([]);
 });
 
-test('new note, list, open', async () => {
+test('new note, list, open', async ({ browser }) => {
+	const { page } = await world(browser, { vault: true });
 	await putNote(page, NOTE, TEXT);
 	await expect(page.getByTestId('saved')).toContainText('to 6/6 hosts');
 	await expect(await readNote(page, NOTE)).toHaveValue(TEXT);
 	await expect(page.getByTestId('note-source')).toContainText('both layers and the sha256 verified');
 });
 
-test('check flags a corrupted copy, repair fixes it', async () => {
+test('check flags a corrupted copy, repair fixes it', async ({ browser }) => {
+	const { page, fakes } = await world(browser, { note: true });
 	await nav(page, 'Check');
 	await expect(page.getByTestId('check-summary')).toContainText('ALL COPIES HEALTHY');
 	await expect(page.getByTestId('check-summary')).toContainText('15/15 copies healthy');
@@ -124,7 +136,10 @@ test('check flags a corrupted copy, repair fixes it', async () => {
 	fakes.pb[0].pastes.set(id, { ...paste, ct: ct.toString('base64') });
 
 	await page.getByRole('button', { name: 'Run full check' }).click();
-	await expect(page.getByTestId('check-summary')).toContainText('DAMAGE DETECTED');
+	// routine decay: calm wording, not the red alarm (every note still has a healthy copy)
+	await expect(page.getByTestId('check-summary')).toContainText('1 copy needs repair');
+	await expect(page.getByTestId('check-summary')).not.toContainText('DAMAGE');
+	await expect(page.getByTestId('check-summary')).not.toHaveClass(/bad-panel/);
 	await expect(page.getByTestId('check-summary')).toContainText('14/15 copies healthy');
 	const bad = page.getByTestId(`row-${NOTE}`).locator('td.bad');
 	await expect(bad).toHaveCount(1);
@@ -141,7 +156,11 @@ test('check flags a corrupted copy, repair fixes it', async () => {
 	await expect(page.getByTestId('check-summary')).toContainText('ALL COPIES HEALTHY');
 });
 
-test('status reads the ledger offline', async () => {
+test('status reads the ledger offline', async ({ browser }) => {
+	const { page } = await world(browser, { note: true });
+	// a full check fills the ledger (with the hosts' expiry), then Status reads it without the network
+	await nav(page, 'Check');
+	await expect(page.getByTestId('check-summary')).toContainText('ALL COPIES HEALTHY');
 	await nav(page, 'Status');
 	const table = page.getByTestId('status-table');
 	await expect(table.locator('tr[data-backend="pb-127"]')).toContainText('never (host-confirmed)');
@@ -153,17 +172,18 @@ test('status reads the ledger offline', async () => {
 	await expect(page.getByText('No warnings.')).toBeVisible();
 });
 
-test('add a host: a second CryptPad instance gets every copy, the recovery record learns it', async () => {
+test('add a host: a second CryptPad instance gets every copy, the recovery record learns it', async ({ browser }) => {
+	const { page, fakes, passphrase } = await world(browser, { note: true });
 	const extra = await startFakeCryptpad();
 	try {
 		await nav(page, 'Hosts');
-		// known-good alternatives (not defaults): "use" fills the add form, nothing is sent yet
-		const alt = page.getByTestId('alternatives');
-		for (const u of ['https://cryptostorm.is/paste', 'https://paste.d-ku.de']) await expect(alt).toContainText(u);
-		await alt.locator('li', { hasText: 'https://paste.d-ku.de' }).getByRole('button', { name: 'use' }).click();
-		await expect(page.getByLabel('Type')).toHaveValue('privatebin');
-		await expect(page.getByLabel('URL')).toHaveValue('https://paste.d-ku.de');
-		await expect(alt.getByRole('button', { name: 'use' })).toHaveCount(5);
+		// hosts fixed in Settings (the fakes): listed as such; opt-in Blossom servers: "use" fills the add form, nothing is sent yet
+		const panel = page.getByTestId('pools');
+		await expect(page.getByTestId('defaults-heading')).toHaveText('Hosts for a new vault (set in Settings)');
+		const blossom = panel.locator('li', { hasText: 'https://blossom.ditto.pub' });
+		await blossom.getByRole('button', { name: 'use' }).click();
+		await expect(page.getByLabel('Type')).toHaveValue('blossom');
+		await expect(page.getByLabel('URL')).toHaveValue('https://blossom.ditto.pub');
 		await page.getByLabel('Type').selectOption('cryptpad');
 		await page.getByLabel('URL').fill(extra.url);
 		await page.getByRole('button', { name: 'Add and copy' }).click();
@@ -176,12 +196,20 @@ test('add a host: a second CryptPad instance gets every copy, the recovery recor
 		await expect(page.getByRole('alert')).toContainText('already in this vault');
 		await nav(page, 'Check');
 		await expect(page.getByTestId('check-summary')).toContainText('18/18 copies healthy');
+		// the host added here travels in the republished recovery record
+		const fresh = await browser.newContext();
+		await useFakes(fresh, fakes);
+		const p = await fresh.newPage();
+		await recoverByName(p, VAULT, passphrase);
+		await expect(p.getByTestId('recovered')).toContainText('cp-127-2');
+		await fresh.close();
 	} finally {
-		fakes.cryptpad.push(extra); // closed with the others; the next tests still use it
+		fakes.cryptpad.push(extra); // closed with the others
 	}
 });
 
-test('reload locks; the passphrase unlocks', async () => {
+test('reload locks; the passphrase unlocks', async ({ browser }) => {
+	const { page, passphrase } = await world(browser, { note: true });
 	await nav(page, 'Notes');
 	await page.reload();
 	await expect(page.getByTestId('lock-status')).toContainText('LOCKED');
@@ -205,6 +233,7 @@ test('reload locks; the passphrase unlocks', async () => {
 });
 
 test('recover by name + passphrase in a fresh browser', async ({ browser }) => {
+	const { fakes, passphrase } = await world(browser, { note: true });
 	const fresh = await browser.newContext();
 	await useFakes(fresh, fakes);
 	const p = await fresh.newPage();
@@ -216,8 +245,6 @@ test('recover by name + passphrase in a fresh browser', async ({ browser }) => {
 	await expect(form.getByLabel('Passphrase')).toHaveAttribute('autocomplete', 'current-password');
 	await recoverByName(p, VAULT.normalize('NFD'), passphrase);
 	await expectNoLeak(p, passphrase);
-	// the host added above travelled in the republished recovery record
-	await expect(p.getByTestId('recovered')).toContainText('cp-127-2');
 	await expect(await readNote(p, NOTE)).toHaveValue(TEXT);
 	await nav(p, 'Check');
 	await expect(p.getByTestId('check-summary')).toContainText('ALL COPIES HEALTHY');
@@ -226,6 +253,7 @@ test('recover by name + passphrase in a fresh browser', async ({ browser }) => {
 });
 
 test('a wrong passphrase finds nothing and stores nothing', async ({ browser }) => {
+	const { fakes } = await world(browser, { vault: true });
 	const fresh = await browser.newContext();
 	await useFakes(fresh, fakes);
 	const p = await fresh.newPage();
