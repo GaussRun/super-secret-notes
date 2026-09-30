@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { to } from '$lib/link';
 	import Diagram from '$lib/components/Diagram.svelte';
+	import { defaultCounts, defaultHosts } from '$lib/overkill/settings';
+	import { total } from '$lib/diagram';
+
+	// counts from the defaults list, so changing the defaults never means editing this page
+	const counts = defaultCounts();
+	const inBrowser = defaultHosts().cryptpad.length;
 	// the code on GitHub (same file the web app bundles)
 	const CRYPTO_JS = 'https://github.com/GaussRun/super-secret-notes/blob/main/overkill/cli/src/crypto.js';
 </script>
@@ -14,21 +20,21 @@
 </p>
 
 <Diagram size="large" />
-<p class="muted small" data-testid="cli-accounts">The command line tool can already use MEGA, Proton Drive, Filen and Fileverse.</p>
+<p class="muted small" data-testid="cli-accounts">The command line tool can already use MEGA, Proton Drive, Filen and Fileverse. Blossom servers (no encryption of their own) can be added on the Hosts page or with the command line tool.</p>
 
 <div class="panel">
 	<h2>Redundancy first</h2>
 	<ul>
-		<li>By default every note goes to a dozen zero-signup hosts: 3 PrivateBin instances, CryptPad accounts made for your vault (two instances from the command line; in the browser one, because the other only lets its own pages use it), 4 Nostr relays and 3 Blossom servers. MEGA, Proton Drive, Filen and Fileverse are opt-in in the command line tool.</li>
+		<li data-testid="default-counts">By default every note goes to {total(counts)} zero-signup hosts: {counts.privatebin} PrivateBin instances, CryptPad accounts made for your vault ({counts.cryptpad} instances from the command line; {inBrowser} in the browser, because the others only let their own pages use them) and {counts.nostr} Nostr relays. Blossom servers are opt-in, because they add no encryption of their own; MEGA, Proton Drive, Filen and Fileverse are opt-in in the command line tool.</li>
 		<li>Reading takes the first copy that passes every check and falls back to the next one if a copy is missing, damaged or out of date.</li>
 		<li>An encrypted index lists your notes, where each copy lives and when each was last verified (the health ledger). <a href={to('/check/')}>Check</a> downloads and verifies every copy; Repair re-uploads broken ones from a healthy copy.</li>
-		<li>Free hosts promise little: PrivateBin keeps pastes with "never" expiry, but Nostr relays and Blossom servers promise no retention, so we treat their copies as possibly gone 120 days after publishing and republish them (our policy, not theirs).</li>
+		<li>Free hosts promise little: PrivateBin keeps pastes with "never" expiry, but Nostr relays (and Blossom servers, if you add them) promise no retention, so we treat their copies as possibly gone 120 days after publishing and republish them (our policy, not theirs).</li>
 	</ul>
 </div>
 
 <div class="panel" data-testid="layers">
 	<h2>Our encryption, then each host's native encryption</h2>
-	<p>Our encryption has two layers and runs on your device (here: in this browser tab) before anything leaves it. Then each host applies its own native scheme, except Blossom, which has none, so we add one there.</p>
+	<p>Our encryption has two layers and runs on your device (here: in this browser tab) before anything leaves it. Then each host applies its own native scheme, except Blossom (opt-in, not a default), which has none, so we add one there.</p>
 
 	<h3>Our encryption, part 1: age</h3>
 	<p>
@@ -66,7 +72,7 @@
 					<td>NIP-44 v2 to a key derived from the vault: secp256k1 ECDH, HKDF-SHA256, ChaCha20, HMAC-SHA256 and length padding (<a href="https://github.com/nostr-protocol/nips/blob/master/44.md" rel="noopener">NIP-44</a>).</td>
 				</tr>
 				<tr>
-					<td>Blossom servers</td>
+					<td>Blossom servers (opt-in)</td>
 					<td>None: a Blossom server stores exactly the bytes it receives (<a href="https://github.com/hzrd149/blossom/blob/master/buds/02.md" rel="noopener">BUD-02</a>: "The server MUST NOT modify the blob"). So we add our own extra layer: <span class="mono">"OVKB" || nonce || AES-256-GCM(K_blossom, nonce, blob)</span>, under a separate key.</td>
 				</tr>
 				<tr>

@@ -103,10 +103,13 @@ client modules are AGPL-3.0; everything else in use is MIT or BSD-3-Clause, whic
 
 ## Defaults: zero-signup first
 Default backends are hosts that one CLI command can use with no email, no captcha and no manual signup:
-1. PrivateBin instances (no account; `never` expiry; list above).
-2. Nostr relays (NIP-78 kind 30078 + NIP-44; the key is derived, no account).
+1. PrivateBin instances (no account; `never` expiry; list above): the first 4.
+2. Nostr relays (NIP-78 kind 30078 + NIP-44; the key is derived, no account): 4.
 3. CryptPad instances with automated signup, only where registration is open, no captcha, and the ToS allows
-   it (one account per instance).
+   it (one account per instance): 2.
+That is 10 copies. Blossom servers are not a default (since 2026-09-30): they add no encryption of their
+own. They stay available as an opt-in (`init --advanced`, `hosts add`), and vaults that already have
+Blossom backends keep using them unchanged.
 Second priority, opt-in: Proton Drive, MEGA, Filen (need a manual signup with email/captcha/verification).
 
 One-command goal: `super-secret-notes put <name> [file]` on a fresh machine creates the vault if there is none,

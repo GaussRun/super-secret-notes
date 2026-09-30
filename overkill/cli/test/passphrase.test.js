@@ -36,7 +36,8 @@ test('strength check rejects the classics and accepts real entropy', () => {
 test('generated vault names: 4 list words joined by "-", valid, different each time', () => {
   const list = new Set(WORDS)
   const names = new Set()
-  for (let i = 0; i < 50; i++) {
+  // enough names that a hyphenated list word (drop-down, felt-tip, t-shirt, yo-yo) would show up
+  for (let i = 0; i < 3000; i++) {
     const name = generateVaultName()
     const words = name.split('-')
     assert.equal(words.length, 4, name)
@@ -44,5 +45,5 @@ test('generated vault names: 4 list words joined by "-", valid, different each t
     assert.ok(validVaultName(name), name)
     names.add(name)
   }
-  assert.equal(names.size, 50)
+  assert.equal(names.size, 3000)
 })

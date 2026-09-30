@@ -1,9 +1,9 @@
 # Super Secret Notes by GaussRun
 
 > A note you cannot afford to lose, saved in many independent places, recoverable anywhere with a
-> vault name plus passphrase. Every note is copied to a dozen free hosts that need no signup, run by
-> different people, so losing one host (or several) loses nothing. Before a note leaves the device it
-> gets our encryption (age + AES-256-GCM), then each host's native encryption. Works in the browser and with the
+> vault name plus passphrase. Write a note: the browser (or the command line tool) encrypts it (age +
+> AES-256-GCM), then it is copied to many free hosts that need no signup and encrypt it again, run
+> by different people, so losing one host (or several) loses nothing. Works in the browser and with the
 > `super-secret-notes` command line tool (same format).
 
 Site: {{SITE_URL}}/
@@ -21,9 +21,9 @@ Command line tool: `super-secret-notes` (Node.js 24), same format as the web app
 
 ## How it works
 
-- Redundancy: by default PrivateBin pastebins (3), CryptPad accounts derived from the vault, Nostr
-  relays (4) and Blossom blob servers (3); MEGA, Proton Drive, Filen and Fileverse are opt-in in the
-  command line tool. Reads use the first copy that passes every check. An encrypted index lists the
+- Redundancy: by default several PrivateBin pastebins, CryptPad accounts derived from the vault and
+  several Nostr relays (the current list: /how-it-works/). Blossom blob servers are opt-in (no native encryption); MEGA, Proton
+  Drive, Filen and Fileverse are opt-in in the command line tool. Reads use the first copy that passes every check. An encrypted index lists the
   notes, where each copy lives and when each was last verified.
 - Our encryption, part 1: age (https://age-encryption.org/v1, typage library): X25519, HKDF-SHA-256 and
   ChaCha20-Poly1305 key wrap; the note is ChaCha20-Poly1305 in 64 KiB chunks.
@@ -31,8 +31,8 @@ Command line tool: `super-secret-notes` (Node.js 24), same format as the web app
   the blob id is bound as AAD. Code: overkill/cli/src/crypto.js in the repository.
 - Then each host's native encryption: PrivateBin AES-256-GCM (key via PBKDF2-HMAC-SHA256, 100,000 iterations, key in
   the URL fragment); CryptPad XSalsa20-Poly1305 plus Ed25519 signatures; Nostr NIP-44 v2 (secp256k1
-  ECDH, HKDF-SHA256, ChaCha20, HMAC-SHA256, padding); Blossom servers have no native encryption and store
-  bytes unchanged (BUD-02), so the tool adds its own extra AES-256-GCM layer there.
+  ECDH, HKDF-SHA256, ChaCha20, HMAC-SHA256, padding); Blossom servers (opt-in) have no native encryption and
+  store bytes unchanged (BUD-02), so the tool adds its own extra AES-256-GCM layer there.
 - Retention: PrivateBin pastes use "never" expiry; Nostr relays and Blossom servers promise none, so
   their copies are treated as possibly gone 120 days after publishing and republished (the tool's
   policy, not the hosts' promise).

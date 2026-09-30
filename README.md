@@ -1,30 +1,31 @@
 # Super Secret Notes by GaussRun
 
-**A note you cannot afford to lose, saved in many independent places, recoverable anywhere with
-a vault name plus passphrase.**
+**Write a note. Your browser encrypts it, then it's copied to many free hosts that encrypt it
+again.** For the extra paranoid.
 
-Super Secret Notes is an open-source way to **store a secret note redundantly**. Every note is
-copied to a dozen independent free hosts run by different people in different places, with
-**no signup** and no account: **PrivateBin, Nostr, Blossom, CryptPad** (plus opt-in MEGA,
-Proton Drive, Filen and Fileverse). If some of them disappear, the others still have it, and
-`check` and `repair` tell you and fix it. Lose your laptop and you **recover with a vault name
-and passphrase** alone, on any machine. Before anything leaves your device, the note is
-**double-encrypted** with our encryption (age, then AES-256-GCM, both on your device), and then
-each host applies its native encryption on top. It comes
-as a **static web app plus CLI** (the `super-secret-notes` command) that read and write the
+A note you cannot afford to lose, saved in many independent places, recoverable anywhere with a
+vault name plus passphrase. Super Secret Notes is an open-source way to **store a secret note
+redundantly**: every note is copied to many independent free hosts run by different people in
+different places, with **no signup** and no account: **PrivateBin, CryptPad, Nostr** (plus
+opt-in Blossom, MEGA, Proton Drive, Filen and Fileverse in the CLI). If some of them disappear,
+the others still have it, and `check` and `repair` tell you and fix it. Lose your laptop and you
+**recover with a vault name and passphrase** alone, on any machine. Before anything leaves your
+device, the note is **double-encrypted** there (age, then AES-256-GCM), and then each host
+applies its native encryption on top. It comes as a **static web app plus CLI** (the `super-secret-notes` command) that read and write the
 same format, and the web app can hand a vault from a **public computer to phone via QR** code.
 
-![super-secret-notes in action: one put to 12 zero-signup hosts, check, a flipped byte, a fallback read, repair, and recovery on a new laptop from the vault name and passphrase](overkill/cli/demo/overkill-cli.gif)
+![super-secret-notes in action: one put to every zero-signup host, check, a flipped byte, a fallback read, repair, and recovery on a new laptop from the vault name and passphrase](overkill/cli/demo/overkill-cli.gif)
 
 Web app: https://gaussrun.github.io/super-secret-notes/ (see [Web app](#web-app)).
 Source: https://github.com/GaussRun/super-secret-notes
 
 ## What it does
 
-- **Copies every note to many independent places, no signups:** out of the box to 12
-  zero-signup hosts: 3 PrivateBin instances, 2 CryptPad instances (accounts created for you,
-  derived from your vault), 4 Nostr relays and 3 Blossom servers, each run by a different
-  operator. MEGA, Proton Drive, Filen and Fileverse are opt-in.
+- **Copies every note to many independent places, no signups:** out of the box to
+  several PrivateBin instances, CryptPad instances (accounts created for you, derived from your
+  vault) and Nostr relays, each run by a different operator (the current list is in the
+  [backends table](#backends)). Blossom servers, MEGA, Proton Drive, Filen and Fileverse are
+  opt-in.
 - **Encrypts every note twice** on your machine before it leaves: age first, then AES-256-GCM,
   with keys that only exist inside a passphrase-protected `vault.age`. Each copy then gets
   that host's native encryption on top (see [How the encryption works](#how-the-encryption-works)).
@@ -83,11 +84,11 @@ project was called Overkill Notes while it was built, so the environment variabl
 ## 60-second quickstart
 
 ```sh
-echo "Spare house key: with the neighbours at number 12." | super-secret-notes put spare-key
+echo "Spare house key: with the neighbours at number 7." | super-secret-notes put spare-key
 ```
 
 On a machine with no vault, the first `put` sets one up: it asks for a vault name, shows you a
-generated 6-word passphrase (**write it down**), provisions the 12 zero-signup hosts, uploads,
+generated 6-word passphrase (**write it down**), provisions the default zero-signup hosts, uploads,
 and prints the recovery kit (print that too). Then:
 
 ```sh
@@ -121,7 +122,7 @@ than 2 healthy copies (`AT RISK`) and hosts that keep failing (`FLAKY`).
 ### Other setups
 
 ```sh
-super-secret-notes init                      # just make the vault on the 12 defaults (no note yet)
+super-secret-notes init                      # just make the vault on the default hosts (no note yet)
 super-secret-notes init --advanced           # pick hosts yourself, one type at a time (details below)
 super-secret-notes init --from config.json   # non-interactive, for scripts
 super-secret-notes init --index-sync manual  # keep the index on this machine until `super-secret-notes sync`
@@ -142,7 +143,7 @@ The web app runs at https://gaussrun.github.io/super-secret-notes/. The code is 
 `overkill/web`, and its tests run in this repository.
 
 The web app is a **static site**: HTML and JavaScript, no server of ours, no accounts. The page
-talks straight to PrivateBin instances, Nostr relays, Blossom servers and CryptPad, and runs the
+talks straight to PrivateBin instances, CryptPad and Nostr relays, and runs the
 CLI's own modules for encryption, replication, the index and recovery, so a vault made in one
 opens in the other. Every view has its own URL (`/notes/`, `/check/`, `/status/`, `/hosts/`,
 `/recover/`, `/trust/` and so on).
@@ -193,10 +194,10 @@ several accounts at one provider (`init` warns if two backends share one).
 
 | Backend | Default? | What you need | Native encryption (on top of ours) | Retention | Holds the index? |
 |---|---|---|---|---|---|
-| PrivateBin (`privatebin`) | yes, 3 | nothing | PrivateBin's AES-256-GCM, random key per paste (the key is the URL `#fragment`, kept in `secrets.ovk` and the encrypted index) | never, host-confirmed (the stored paste has no expiry); volunteer-run, so instances do disappear | no |
+| PrivateBin (`privatebin`) | yes, 4 | nothing | PrivateBin's AES-256-GCM, random key per paste (the key is the URL `#fragment`, kept in `secrets.ovk` and the encrypted index) | never, host-confirmed (the stored paste has no expiry); volunteer-run, so instances do disappear | no |
 | CryptPad, derived account (`cryptpad`) | yes, 2 | nothing: username and password are derived from your vault, one account per instance | CryptPad's own end-to-end encryption, through CryptPad's client modules | while the account is active (instance policy; varies per instance) | yes |
 | Nostr relays (`nostr`) | yes, 4. **Experimental** | nothing: the key is derived from your vault | NIP-44 v2 encryption to a vault-derived key | none promised; we republish on our own schedule (assumed 120 days) | yes |
-| Blossom servers (`blossom`) | yes, 3. **Experimental** | nothing: uploads are signed with a vault-derived key | none native, so our extra AES-256-GCM under a vault-derived key; the blob's sha256 is checked before decrypting | none promised; we republish on our own schedule (assumed 120 days) | no |
+| Blossom servers (`blossom`) | opt-in (CLI). **Experimental** | nothing: uploads are signed with a vault-derived key | none native, so an extra AES-256-GCM under a vault-derived key, added on your device; the blob's sha256 is checked before decrypting | none promised; we republish on our own schedule (assumed 120 days) | no |
 | MEGA (`mega`) | opt-in | an account (email and password) | MEGA's end-to-end encryption | while the account exists (20 GB free) | yes |
 | Proton Drive (`proton-cli`) | opt-in | an account plus Proton's official `proton-drive` CLI, logged in once | Proton's end-to-end encryption | while the account exists; old versions kept as revisions | yes |
 | Filen (`filen`) | opt-in | an account (email and password, no 2FA yet) | Filen's end-to-end encryption | while the account exists (10 GB free, Germany) | yes |
@@ -219,8 +220,8 @@ that meets the rule on its own. The full reasoning, relay and server probes incl
 The index is the encrypted list of your notes, where their copies sit, and the health ledger.
 It lives only on backends with stable paths (CryptPad, Nostr, MEGA, Proton, Filen, Fileverse,
 rclone, local folders), never on PrivateBin or Blossom, which pick their own addresses. A
-config needs at least one index holder, and `init` warns below two. With the 12 defaults that
-is 6 of them.
+config needs at least one index holder, and `init` warns below two. With the defaults, that is
+the CryptPad and Nostr hosts.
 
 The `index_sync` setting decides when it leaves this machine:
 
@@ -272,8 +273,8 @@ rclone keeps its tokens in its own config.
 
 **Our encryption, then each host's native encryption.** First our encryption: age, then
 AES-256-GCM, both applied on your device before anything leaves it. Then each host's native
-encryption: PrivateBin's AES-256-GCM, CryptPad's XSalsa20-Poly1305, Nostr's NIP-44. Blossom has
-none, so we add an extra AES-256-GCM layer there.
+encryption: PrivateBin's AES-256-GCM, CryptPad's XSalsa20-Poly1305, Nostr's NIP-44. Blossom (opt-in)
+has none, so an extra AES-256-GCM layer is added on your device there.
 
 ```mermaid
 flowchart LR
@@ -286,12 +287,12 @@ flowchart LR
     H1[PrivateBin: AES-256-GCM]
     H2[CryptPad: XSalsa20-Poly1305]
     H3[Nostr: NIP-44 v2]
-    H5[MEGA / Proton / Filen / Fileverse]
+    H5[opt-in: MEGA / Proton / Filen / Fileverse]
   end
   N[note] --> L1
   L2 --> B["OVK1 blob"]
   B --> H1 & H2 & H3 & H5
-  B --> H4["Blossom: none native,<br/>so our extra AES-256-GCM"]
+  B -. opt-in .-> H4["Blossom: none native,<br/>so an extra AES-256-GCM on your device"]
 ```
 
 The same thing in plain text:
@@ -306,8 +307,8 @@ passphrase ──age scrypt──> vault.age = { age X25519 identity, master (32
                                                               CryptPad username + password per instance
                                                               Fileverse wallet and API key (opt-in)
 
-note ─age─> ─AES-256-GCM(K_aes)─> "OVK1" blob ─each host's native encryption─> 12 copies
-     └───── our encryption ─────┘  (on your device; Blossom gets our extra AES-256-GCM)
+note ─age─> ─AES-256-GCM(K_aes)─> "OVK1" blob ─each host's native encryption─> one copy per host
+     └───── our encryption ─────┘  (on your device; opt-in Blossom gets an extra AES-256-GCM)
 
 passphrase + vault name ──scrypt(N=2^18)──> discovery key (Nostr) ─> vault.age + recovery record
 ```
@@ -330,10 +331,10 @@ and uses only WebCrypto and age: [overkill/cli/src/crypto.js](overkill/cli/src/c
 
 | Host | Its native encryption (primary source) |
 |---|---|
-| PrivateBin | AES-256-GCM, with the key derived by PBKDF2-HMAC-SHA256 (100,000 iterations) from a random 32-byte paste key that lives only in the URL fragment ([PrivateBin encryption format](https://github.com/PrivateBin/PrivateBin/wiki/Encryption-format)). We write pastes in that format; the paste URLs, keys included, stay in our encrypted index and `secrets.ovk`. |
+| PrivateBin | AES-256-GCM, with the key derived by PBKDF2-HMAC-SHA256 (100,000 iterations) from a random 32-byte paste key that lives only in the URL fragment ([PrivateBin encryption format](https://github.com/PrivateBin/PrivateBin/wiki/Encryption-format)). Pastes are written in that format on your device; the paste URLs, keys included, stay in the encrypted index and `secrets.ovk`. |
 | CryptPad | XSalsa20-Poly1305 for document content and Ed25519 signatures ([CryptPad white paper](https://blog.cryptpad.org/images/whitepaper.pdf)), through CryptPad's own client modules. |
 | Nostr relays | NIP-44 v2 to a vault-derived key: secp256k1 ECDH, HKDF-SHA256, ChaCha20, HMAC-SHA256 and length padding ([NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md)). |
-| Blossom servers | None: Blossom stores the exact bytes it receives ([BUD-02](https://github.com/hzrd149/blossom/blob/master/buds/02.md)). So we add our own extra layer: `"OVKB" || nonce || AES-256-GCM(K_blossom, nonce, blob)`, with `K_blossom` from HKDF-SHA256 over the master. |
+| Blossom servers (opt-in) | None: Blossom stores the exact bytes it receives ([BUD-02](https://github.com/hzrd149/blossom/blob/master/buds/02.md)). So an extra layer is added on your device: `"OVKB" || nonce || AES-256-GCM(K_blossom, nonce, blob)`, with `K_blossom` from HKDF-SHA256 over the master. |
 | MEGA, Proton Drive, Filen, Fileverse (opt-in) | Their client-side encryption, done by their official SDK, CLI or library ([MEGA](https://mega.io/security), [Proton Drive](https://proton.me/drive/security), [Filen](https://filen.io/), [Fileverse](https://fileverse.io/)). |
 
 Everything the zero-signup hosts' layer uses (paste keys, NIP-44 key, Blossom key, CryptPad
@@ -439,12 +440,12 @@ Super Secret Notes only works because people run free, open hosts for everyone, 
 their own time and money. Thank you to the operators of the default hosts:
 
 - **PrivateBin:** [pb.envs.net](https://pb.envs.net), [paste.systemli.org](https://paste.systemli.org),
-  [extrait.facil.services](https://extrait.facil.services)
+  [extrait.facil.services](https://extrait.facil.services), [bin.disroot.org](https://bin.disroot.org)
 - **CryptPad:** [cryptpad.private.coffee](https://cryptpad.private.coffee),
   [crypt.unredacted.org](https://crypt.unredacted.org)
 - **Nostr relays:** [nos.lol](https://nos.lol), [nostr.mom](https://nostr.mom),
   [purplerelay.com](https://purplerelay.com), [nostr.oxtr.dev](https://nostr.oxtr.dev)
-- **Blossom servers:** [nostr.download](https://nostr.download), [blossom.ditto.pub](https://blossom.ditto.pub),
+- **Blossom servers** (opt-in in the CLI): [nostr.download](https://nostr.download), [blossom.ditto.pub](https://blossom.ditto.pub),
   [cdn.hzrd149.com](https://cdn.hzrd149.com)
 
 and to everyone else listed in the public [PrivateBin](https://privatebin.info/directory/),

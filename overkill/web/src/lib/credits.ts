@@ -1,4 +1,5 @@
-// Who makes this possible: the projects we build on and the people who run the default hosts.
+// Who makes this possible: the projects we build on and the people who run the default hosts
+// (Blossom servers are no longer a default, but vaults that added them still use them).
 // Every link was checked (HTTP 200, 2026-09-30); `support` only where the operator or project has
 // a donation or sponsorship page of its own.
 
@@ -10,7 +11,7 @@ export interface Credit {
 }
 
 export const PROJECTS: Credit[] = [
-	{ name: 'PrivateBin', url: 'https://privatebin.info/', what: 'the zero-knowledge pastebin behind three of the default hosts (code: github.com/PrivateBin/PrivateBin)' },
+	{ name: 'PrivateBin', url: 'https://privatebin.info/', what: 'the zero-knowledge pastebin behind four of the default hosts (code: github.com/PrivateBin/PrivateBin)' },
 	{ name: 'CryptPad', url: 'https://cryptpad.org/', what: 'the end-to-end encrypted office suite, made by the CryptPad team at XWiki SAS', support: 'https://opencollective.com/cryptpad' },
 	{ name: 'Nostr', url: 'https://nostr.com/', what: 'the relay protocol; its specifications are the NIPs (github.com/nostr-protocol/nips)' },
 	{ name: 'Blossom', url: 'https://github.com/hzrd149/blossom', what: 'the blob-server specification by hzrd149' },
@@ -23,7 +24,8 @@ export const OPERATORS: { kind: string; hosts: Credit[] }[] = [
 		hosts: [
 			{ name: 'pb.envs.net', url: 'https://pb.envs.net', what: 'run by envs.net', support: 'https://envs.net/donate/' },
 			{ name: 'paste.systemli.org', url: 'https://paste.systemli.org', what: 'run by systemli.org (www.systemli.org)' },
-			{ name: 'extrait.facil.services', url: 'https://extrait.facil.services', what: 'run by FACIL (facil.services)', support: 'https://facil.qc.ca/civicrm/contribute/transact?reset=1&id=2' }
+			{ name: 'extrait.facil.services', url: 'https://extrait.facil.services', what: 'run by FACIL (facil.services)', support: 'https://facil.qc.ca/civicrm/contribute/transact?reset=1&id=2' },
+			{ name: 'bin.disroot.org', url: 'https://bin.disroot.org', what: 'run by Disroot (disroot.org)', support: 'https://disroot.org/donate' }
 		]
 	},
 	{
@@ -43,7 +45,7 @@ export const OPERATORS: { kind: string; hosts: Credit[] }[] = [
 		]
 	},
 	{
-		kind: 'Blossom servers',
+		kind: 'Blossom servers (opt-in, used by vaults that added them)',
 		hosts: [
 			{ name: 'nostr.download', url: 'https://nostr.download', what: 'public blob server' },
 			{ name: 'blossom.ditto.pub', url: 'https://blossom.ditto.pub', what: 'run by Ditto (ditto.pub)' },

@@ -352,13 +352,18 @@ test('init defaults prefer cached healthy hosts and keep short names unique', as
   try {
     const cfgs = defaultBackends({ cryptpad: false, home })
     const pb = cfgs.filter((x) => x.type === 'privatebin')
-    assert.deepEqual(pb.map((x) => x.url).sort(), ['https://bin.third.example', 'https://paste.twin.example.net', 'https://paste.twin.example.org'])
-    assert.deepEqual(pb.map((x) => x.name).sort(), ['pb-third', 'pb-twin', 'pb-twin-2'])
+    // four slots: the three healthy cached hosts first, then built-in hosts not known to be dead
+    assert.equal(pb.length, 4)
+    assert.deepEqual(pb.slice(0, 3).map((x) => x.url).sort(), ['https://bin.third.example', 'https://paste.twin.example.net', 'https://paste.twin.example.org'])
+    assert.deepEqual(pb.slice(0, 3).map((x) => x.name).sort(), ['pb-third', 'pb-twin', 'pb-twin-2'])
+    assert.deepEqual(pb.slice(3).map((x) => x.url), KNOWN.privatebin.slice(3, 4))
+    assert.ok(!pb.some((x) => [a, b, c].includes(x.url)), 'failed hosts are not picked')
+    assert.equal(new Set(pb.map((x) => x.name)).size, 4)
     const relays = cfgs.filter((x) => x.type === 'nostr').map((x) => x.url)
     assert.deepEqual(relays, KNOWN.nostr.slice(1, 5))
     // without a cache nothing changes
     const plain = defaultBackends({ cryptpad: false })
-    assert.deepEqual(plain.filter((x) => x.type === 'privatebin').map((x) => x.url), KNOWN.privatebin.slice(0, 3))
+    assert.deepEqual(plain.filter((x) => x.type === 'privatebin').map((x) => x.url), KNOWN.privatebin.slice(0, 4))
   } finally {
     if (saved !== undefined) process.env.OVERKILL_DEFAULT_BACKENDS = saved
   }

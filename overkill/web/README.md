@@ -3,7 +3,7 @@
 A note you cannot afford to lose, saved in many independent places, recoverable anywhere with a
 vault name plus passphrase. In a browser tab, with no server of ours.
 
-![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 3 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305), 4 Nostr relays (native NIP-44) and 3 Blossom servers (no native encryption, so we add AES-256-GCM); any one healthy copy plus the vault name and passphrase brings it back](static/diagram.svg)
+![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 4 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305) and 4 Nostr relays (native NIP-44), 10 copies; coming soon: MEGA, Proton Drive, Filen, Fileverse and Blossom; any one healthy copy plus the vault name and passphrase brings it back](static/diagram.svg)
 
 The diagram is `static/diagram.svg` (regenerate with `node scripts/diagram.mjs`; the same layout
 renders inline on the landing page and on /how-it-works/). Logo sources and terms:
@@ -17,7 +17,7 @@ server routes, no relay. The page talks straight to hosts that need no account:
 |---|---|---|
 | PrivateBin instances | CORS simple requests (`Content-Type: text/plain`, `Accept: application/json`, no `X-Requested-With`): PrivateBin answers no preflight but does answer these, with `Access-Control-Allow-Origin: *` | AES-256-GCM, key in the URL fragment |
 | Nostr relays | WebSocket | NIP-44 to a key derived from the vault |
-| Blossom servers | CORS with preflight (BUD-01 servers allow any origin) | AES-256-GCM under a key derived from the vault |
+| Blossom servers (opt-in, not a default: no native encryption) | CORS with preflight (BUD-01 servers allow any origin) | AES-256-GCM under a key derived from the vault |
 | CryptPad instances | its HTTP API with CORS (config, login blocks, `/api/auth` as form posts) and the realtime protocol over WebSocket; the account is derived from the vault and registered on first use | CryptPad's own encryption of every pad |
 
 A vault made by the CLI (`overkill/cli`) opens here and the other way round: the web app runs the
@@ -219,7 +219,7 @@ OVERKILL_LIVE_SECRET_FILE=/somewhere/outside/the/repo/live-vault.json \
 ```
 
 The generated passphrase goes to that file (mode 0600) so the next run recovers the same vault
-instead of making another one; it is never printed. Result on 2026-09-30: all 10 default hosts
+instead of making another one; it is never printed. Result on 2026-09-30: all 10 hosts that were then the defaults
 worked from the browser (PrivateBin pb.envs.net, paste.systemli.org, extrait.facil.services; Nostr
 nos.lol, nostr.mom, purplerelay.com, nostr.oxtr.dev; Blossom nostr.download, blossom.ditto.pub,
 cdn.hzrd149.com), 23 of 24 copies verified (nos.lol answered one read with "rate-limited"), and

@@ -10,16 +10,23 @@ export function passphraseTools (wordlistText) {
   const WORDSET = new Set(WORDS)
   const BITS_PER_WORD = Math.log2(WORDS.length) // 12.92 for 7776 words
 
-  /** Uniformly random words from the list, space separated. */
-  function generatePassphrase (words = DEFAULT_WORDS) {
+  /** `n` uniformly random entries of `list` (rejection sampling, no modulo bias). */
+  function pick (list, n) {
     const out = []
-    const limit = Math.floor(65536 / WORDS.length) * WORDS.length // rejection sampling, no modulo bias
-    while (out.length < words) {
+    const limit = Math.floor(65536 / list.length) * list.length
+    while (out.length < n) {
       const [x] = globalThis.crypto.getRandomValues(new Uint16Array(1))
-      if (x < limit) out.push(WORDS[x % WORDS.length])
+      if (x < limit) out.push(list[x % list.length])
     }
-    return out.join(' ')
+    return out
   }
+
+  /** Uniformly random words from the list, space separated. */
+  const generatePassphrase = (words = DEFAULT_WORDS) => pick(WORDS, words).join(' ')
+
+  // vault names join words with "-", so the four list words that contain one (drop-down,
+  // felt-tip, t-shirt, yo-yo) are left out there
+  const NAME_WORDS = WORDS.filter((w) => !w.includes('-'))
 
   /**
    * Estimated bits of a user-chosen passphrase, deliberately on the low side (humans pick
@@ -39,11 +46,11 @@ export function passphraseTools (wordlistText) {
   const isStrongEnough = (pass) => estimateBits(pass) >= MIN_BITS
 
   /**
-   * A readable vault name, e.g. "velvet-otter-harbor-lantern": random words from the same list,
-   * joined with "-" (no list word contains one). A clash with someone else's name is harmless,
-   * since the discovery key also depends on the passphrase; four words keep clashes rare.
+   * A readable vault name, e.g. "velvet-otter-harbor-lantern": random words from the same list
+   * (without the four hyphenated ones), joined with "-". A clash with someone else's name is
+   * harmless, since the discovery key also depends on the passphrase; four words keep clashes rare.
    */
-  const generateVaultName = (words = VAULT_NAME_WORDS) => generatePassphrase(words).replace(/ /g, '-')
+  const generateVaultName = (words = VAULT_NAME_WORDS) => pick(NAME_WORDS, words).join('-')
 
   return { WORDS, BITS_PER_WORD, MIN_BITS, DEFAULT_WORDS, generatePassphrase, estimateBits, isStrongEnough, generateVaultName }
 }

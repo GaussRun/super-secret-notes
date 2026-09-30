@@ -36,12 +36,28 @@ export function defaultHosts(): Hosts {
 	return {
 		privatebin: INSTANCES.slice(0, PB_COUNT),
 		nostr: RELAYS.slice(0, RELAY_COUNT),
-		blossom: SERVERS.slice(0, BLOSSOM_COUNT),
+		// Blossom servers add no encryption of their own: not a default (they can still be added)
+		blossom: [],
 		// the CLI's signup instances that let other origins use their API
 		cryptpad: SIGNUP_INSTANCES.filter((u: string) => !CRYPTPAD_NO_BROWSER.includes(new URL(u).host)),
 		discovery: [...DEFAULT_RELAYS],
 		nostrPauseMs: 3000
 	};
+}
+
+/** Known-good hosts that are not defaults: the two PrivateBin instances after the defaults also
+ *  passed the browser probe (privatebin.js), and the Blossom servers are opt-in (no encryption of
+ *  their own). Offered on /hosts. */
+export const ALTERNATIVES = {
+	privatebin: INSTANCES.slice(PB_COUNT, PB_COUNT + 2),
+	blossom: SERVERS.slice(0, BLOSSOM_COUNT)
+};
+
+/** Default host counts as the diagram and the copy show them: CryptPad counts every signup
+ *  instance (the command line tool uses both; this browser can use fewer, see /how-it-works/). */
+export function defaultCounts() {
+	const d = defaultHosts();
+	return { privatebin: d.privatebin.length, cryptpad: SIGNUP_INSTANCES.length, nostr: d.nostr.length };
 }
 
 export const KNOWN = { privatebin: INSTANCES, nostr: RELAYS, blossom: SERVERS, cryptpad: SIGNUP_INSTANCES };

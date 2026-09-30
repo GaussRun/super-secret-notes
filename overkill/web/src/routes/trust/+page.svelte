@@ -22,7 +22,7 @@
 <div class="panel">
 	<h2>What the page does to limit the damage</h2>
 	<ul>
-		<li>No server of ours: the page talks straight to PrivateBin, Nostr relays and Blossom servers. Nobody in the middle sees your traffic but them.</li>
+		<li>No server of ours: the page talks straight to the hosts (PrivateBin, CryptPad, Nostr relays, and Blossom servers if you add them). Nobody in the middle sees your traffic but them.</li>
 		<li>A strict Content-Security-Policy: scripts only from this site (plus the hash of one boot script), network only over https: and wss:, no frames, no plugins, no forms posting elsewhere.</li>
 		<li>No third-party scripts, no CDNs, no analytics, no fonts from elsewhere. Everything is in the bundle.</li>
 		<li>Send to phone puts the passphrase in a QR code and, for the link kind, in the URL fragment, which browsers never send to a server; the recover page strips it at once. Anyone who sees the QR can open the vault, hence the warning and the one-minute auto-hide.</li>

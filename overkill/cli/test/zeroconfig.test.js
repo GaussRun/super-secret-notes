@@ -20,12 +20,14 @@ function cli (env, args, input) {
   })
 }
 
-test('defaults: 3 PrivateBin, 2 CryptPad with derived accounts, 4 Nostr relays, 3 Blossom servers', () => {
+test('defaults: 4 PrivateBin, 2 CryptPad with derived accounts, 4 Nostr relays, no Blossom (10, all with their own encryption)', () => {
   const d = defaultBackends({ cryptpad: true })
   assert.ok(!defaultBackends({ cryptpad: false }).some((b) => b.type === 'cryptpad'))
-  assert.deepEqual(d.map((b) => b.name), ['pb-envs', 'pb-systemli', 'pb-extrait', 'cp-private', 'cp-unredacted',
-    'nostr-nos', 'nostr-mom', 'nostr-purplerelay', 'nostr-oxtr', 'blossom-nostr', 'blossom-ditto', 'blossom-hzrd149'])
-  assert.deepEqual(d.filter((b) => b.type === 'blossom').map((b) => b.url), ['https://nostr.download', 'https://blossom.ditto.pub', 'https://cdn.hzrd149.com'])
+  assert.equal(d.length, 10)
+  assert.deepEqual(d.map((b) => b.name), ['pb-envs', 'pb-systemli', 'pb-extrait', 'pb-disroot', 'cp-private', 'cp-unredacted',
+    'nostr-nos', 'nostr-mom', 'nostr-purplerelay', 'nostr-oxtr'])
+  assert.deepEqual(d.filter((b) => b.type === 'privatebin').map((b) => b.url), ['https://pb.envs.net', 'https://paste.systemli.org', 'https://extrait.facil.services', 'https://bin.disroot.org'])
+  assert.ok(!d.some((b) => b.type === 'blossom'), 'Blossom does not encrypt: opt-in only')
   assert.deepEqual(d.filter((b) => b.type === 'nostr').map((b) => b.url), ['wss://nos.lol', 'wss://nostr.mom', 'wss://purplerelay.com', 'wss://nostr.oxtr.dev'])
   assert.deepEqual(d.filter((b) => b.type === 'cryptpad').map((b) => [b.origin, b.derived]),
     [['https://cryptpad.private.coffee', true], ['https://crypt.unredacted.org', true]])

@@ -4,6 +4,7 @@
 	// standalone static/diagram.svg); colors follow the page (CSS variables), logos keep theirs.
 	import { diagramSvg, diagramStyle } from '$lib/diagram';
 	import { to } from '$lib/link';
+	import { defaultCounts } from '$lib/overkill/settings';
 
 	let { size = 'normal' }: { size?: 'normal' | 'large' } = $props();
 	const style = diagramStyle({
@@ -17,15 +18,16 @@
 		tile: '#ffffff'
 	});
 	const logoHref = (f: string) => to(`/logos/${f}`);
-	const wide = $derived(diagramSvg('wide', { logoHref, style, id: `dg-wide-${size}` }));
-	const tall = $derived(diagramSvg('tall', { logoHref, style, id: `dg-tall-${size}` }));
+	const counts = defaultCounts();
+	const wide = $derived(diagramSvg('wide', counts, { logoHref, style, id: `dg-wide-${size}` }));
+	const tall = $derived(diagramSvg('tall', counts, { logoHref, style, id: `dg-tall-${size}` }));
 </script>
 
 <figure class="diagram {size}" data-testid="diagram">
 	<div class="wide">{@html wide}</div>
 	<div class="tall">{@html tall}</div>
 	<figcaption class="muted">
-		Logos: PrivateBin icon by rugk (CC BY 4.0) and CryptPad logo by the XWiki CryptPad Team (AGPL-3.0-or-later); the others appear as text. No endorsement implied.
+		Logos: PrivateBin icon by rugk (CC BY 4.0), CryptPad logo by the XWiki CryptPad Team (AGPL-3.0-or-later), Nostr ostrich icon by SovrynMatt (free to use, as its author states). No endorsement implied.
 	</figcaption>
 </figure>
 

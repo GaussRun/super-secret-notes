@@ -2,6 +2,12 @@
 // site and loads, no CSP complaints, fits a 375 px phone, and reduced motion stops the packets.
 import { test, expect } from '@playwright/test';
 import { url, watchErrors, ORIGIN } from './helpers';
+import { defaultBackends } from '../../cli/src/defaults.js';
+
+// the defaults list is the source of every count the diagram shows
+delete process.env.OVERKILL_DEFAULT_BACKENDS;
+const DEFAULTS: { type: string }[] = defaultBackends({ cryptpad: true });
+const count = (t: string) => DEFAULTS.filter((b) => b.type === t).length;
 
 const PAGES = ['/', '/how-it-works/'];
 
@@ -27,34 +33,52 @@ for (const path of PAGES) {
 				await expect(svg.locator('[data-step="ours"]')).toContainText('Our encryption');
 				await expect(svg.locator('[data-step="ours"]')).toContainText('AES-256-GCM (HKDF keys)');
 				await expect(svg.locator('[data-layer="privatebin"]')).toHaveText('native: AES-256-GCM, key in the link');
-				// Blossom looks like every other row, and says what it does with our copy
-				await expect(svg.locator('[data-layer="blossom"]')).toHaveText('stores our encrypted copy as-is');
+				// Blossom is not a default any more: only named in the "Coming soon" row
+				await expect(svg.locator('[data-host="blossom"], [data-layer="blossom"]')).toHaveCount(0);
+				await expect(svg.locator('[data-host="nostr"] [data-layer="nostr"]')).toHaveText('native NIP-44: ChaCha20 + HMAC-SHA256');
 				await expect(svg.locator('.dg-ours, .dg-host-ours')).toHaveCount(0);
 				// no text badge repeats the name next to it: neutral monograms
 				// the account services: a muted "Coming soon" row, no encryption line
 				const soon = svg.locator('[data-host="optin"]');
 				await expect(soon).toContainText('Coming soon');
-				await expect(soon).toContainText('MEGA, Proton Drive, Filen, Fileverse');
+				await expect(soon).toContainText('MEGA, Proton Drive, Filen, Fileverse, Blossom');
 				await expect(soon).not.toContainText('encryption');
 				await expect(soon).toHaveClass(/dg-optin/);
-				if (path === '/how-it-works/') await expect(page.getByTestId('cli-accounts')).toHaveText('The command line tool can already use MEGA, Proton Drive, Filen and Fileverse.');
-				for (const [id, mono] of [['nostr', 'N'], ['blossom', 'B'], ['optin', '+4']]) await expect(svg.locator(`[data-host="${id}"] .dg-mono-text`)).toHaveText(mono);
+				if (path === '/how-it-works/') await expect(page.getByTestId('cli-accounts')).toHaveText('The command line tool can already use MEGA, Proton Drive, Filen and Fileverse. Blossom servers (no encryption of their own) can be added on the Hosts page or with the command line tool.');
+				// the only monogram left is the "Coming soon" group's count
+				await expect(svg.locator('.dg-mono-text')).toHaveCount(1);
+				await expect(svg.locator('[data-host="optin"] .dg-mono-text')).toHaveText('+5');
 				await expect(svg.locator('.dg-badge')).toHaveCount(0);
 				await expect(svg.locator('desc')).toContainText('any one healthy copy plus your vault name and passphrase');
-				await expect(svg).toContainText('12 copies');
-				for (const id of ['privatebin', 'nostr', 'blossom', 'optin']) await expect(svg.locator(`[data-host="${id}"]`)).toBeVisible();
+				const total = svg.locator('.dg-total[data-total]');
+				await expect(total).toHaveAttribute('data-total', String(DEFAULTS.length));
+				await expect(total).toHaveText(`${count('privatebin')} PrivateBin + ${count('cryptpad')} CryptPad + ${count('nostr')} relays = ${DEFAULTS.length} copies`);
+				await expect(svg.locator('title')).toContainText(`on ${DEFAULTS.length} hosts`);
+				await expect(svg.locator('[data-host="privatebin"]')).toContainText(`${count('privatebin')} instances`);
+				if (path === '/how-it-works/') await expect(page.getByTestId('default-counts')).toContainText(`goes to ${DEFAULTS.length} zero-signup hosts: ${count('privatebin')} PrivateBin instances`);
+				for (const id of ['privatebin', 'cryptpad', 'nostr', 'optin']) await expect(svg.locator(`[data-host="${id}"]`)).toBeVisible();
 
 				// every logo: same origin, loaded
 				const hrefs = await svg.locator('image.dg-logo').evaluateAll((els) => els.map((e) => (e as SVGImageElement).href.baseVal));
-				expect(hrefs.length).toBe(2);
+				expect(hrefs.map((h) => h.split('/').pop()).sort()).toEqual(['cryptpad.svg', 'nostr.png', 'privatebin.svg']);
 				for (const href of hrefs) {
 					const abs = new URL(href, page.url());
 					expect(abs.origin).toBe(ORIGIN);
 					const r = await page.request.get(abs.href);
 					expect(r.status(), abs.href).toBe(200);
-					expect(r.headers()['content-type']).toContain('image/svg+xml');
+					expect(r.headers()['content-type']).toContain(href.endsWith('.png') ? 'image/png' : 'image/svg+xml');
 				}
-				await expect.poll(() => logos.length).toBeGreaterThanOrEqual(2);
+				// the Nostr logo actually decodes and paints
+				const nostrLogo = svg.locator('[data-host="nostr"] image.dg-logo');
+				await expect(nostrLogo).toHaveCount(1);
+				const decoded = await page.evaluate(async (src) => {
+					const img = new Image();
+					img.src = src;
+					await img.decode();
+					return [img.naturalWidth, img.naturalHeight];
+				}, await nostrLogo.evaluate((e) => (e as SVGImageElement).href.baseVal));
+				expect(decoded).toEqual([128, 128]);
+				await expect.poll(() => logos.length).toBeGreaterThanOrEqual(3);
 				expect(logos.filter((l) => l.status !== 200)).toEqual([]);
 
 				// no horizontal scroll
@@ -90,4 +114,7 @@ test('the standalone diagram.svg for the READMEs is served and self-contained', 
 	// logos embedded, nothing to fetch
 	expect(svg).not.toMatch(/href="(?!data:|#)/);
 	expect((svg.match(/href="data:image\/svg\+xml;base64,/g) ?? []).length).toBe(2);
+	expect((svg.match(/href="data:image\/png;base64,/g) ?? []).length).toBe(1);
+	expect(svg).not.toContain('data-host="blossom"');
+	expect(svg).toContain(`data-total="${DEFAULTS.length}"`);
 });

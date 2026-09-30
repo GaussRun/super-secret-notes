@@ -2,7 +2,7 @@
 	import { vault } from '$lib/overkill/vault.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
-	import { loadHosts } from '$lib/overkill/settings';
+	import { loadHosts, ALTERNATIVES } from '$lib/overkill/settings';
 	import { to } from '$lib/link';
 
 	const hosts = loadHosts();
@@ -85,9 +85,9 @@
 {/if}
 
 <div class="panel">
-	<h2>Defaults for a new vault</h2>
+	<h2 data-testid="defaults-heading">Defaults for a new vault ({hosts.privatebin.length + hosts.cryptpad.length + hosts.nostr.length + hosts.blossom.length} hosts in this browser)</h2>
 	{#each [['privatebin', hosts.privatebin], ['cryptpad', hosts.cryptpad], ['nostr', hosts.nostr], ['blossom', hosts.blossom]] as [type, list] (type)}
-		<h3>{type}</h3>
+		<h3>{type} ({(list as string[]).length})</h3>
 		<p class="muted small">{blurb[type as string]}</p>
 		<ul>{#each list as u (u)}<li class="id">{u}</li>{/each}</ul>
 	{/each}
@@ -96,7 +96,27 @@
 	<p><a href={to('/settings/')}>Change them in Settings.</a> crypt.unredacted.org (a CLI default) only lets its own pages use its API, so a vault using it keeps that copy for the CLI.</p>
 </div>
 
+<div class="panel" data-testid="alternatives">
+	<h2>Known-good alternatives</h2>
+	<p class="muted">Not defaults, but checked and ready to add to a vault (the command line tool's repair can also swap a dead host for one of these).</p>
+	<h3>privatebin</h3>
+	<p class="muted small">They passed the same browser test as the defaults.</p>
+	<ul>
+		{#each ALTERNATIVES.privatebin as u (u)}
+			<li><span class="id">{u}</span>{#if vault.status === 'unlocked'} <button class="secondary use" type="button" onclick={() => ((addType = 'privatebin'), (addUrl = u))}>use</button>{/if}</li>
+		{/each}
+	</ul>
+	<h3>blossom (opt-in)</h3>
+	<p class="muted small">No encryption of their own (we add an AES-256-GCM layer), so they are not a default.</p>
+	<ul>
+		{#each ALTERNATIVES.blossom as u (u)}
+			<li><span class="id">{u}</span>{#if vault.status === 'unlocked'} <button class="secondary use" type="button" onclick={() => ((addType = 'blossom'), (addUrl = u))}>use</button>{/if}</li>
+		{/each}
+	</ul>
+</div>
+
 <style>
 	.small { font-size: 0.85rem; }
 	h3 { font-size: 1rem; margin-bottom: 4px; }
+	.use { padding: 2px 10px; font-size: 0.8rem; margin-left: 6px; }
 </style>

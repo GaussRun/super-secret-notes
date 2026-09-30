@@ -139,6 +139,13 @@ test('add a host: a second CryptPad instance gets every copy, the recovery recor
 	const extra = await startFakeCryptpad();
 	try {
 		await nav(page, 'Hosts');
+		// known-good alternatives (not defaults): "use" fills the add form, nothing is sent yet
+		const alt = page.getByTestId('alternatives');
+		for (const u of ['https://cryptostorm.is/paste', 'https://paste.d-ku.de']) await expect(alt).toContainText(u);
+		await alt.locator('li', { hasText: 'https://paste.d-ku.de' }).getByRole('button', { name: 'use' }).click();
+		await expect(page.getByLabel('Type')).toHaveValue('privatebin');
+		await expect(page.getByLabel('URL')).toHaveValue('https://paste.d-ku.de');
+		await expect(alt.getByRole('button', { name: 'use' })).toHaveCount(5);
 		await page.getByLabel('Type').selectOption('cryptpad');
 		await page.getByLabel('URL').fill(extra.url);
 		await page.getByRole('button', { name: 'Add and copy' }).click();

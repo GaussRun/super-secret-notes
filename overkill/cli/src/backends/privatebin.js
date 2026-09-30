@@ -14,22 +14,25 @@ export const info = {
   signup: 'https://privatebin.info/directory/'
 }
 
-// verified 2026-09-29 to offer `never` expiry (docs/OVERKILL.md, backend admission rule);
-// the first three also honored it server side
+// verified 2026-09-29 to offer `never` expiry (docs/OVERKILL.md, backend admission rule). The
+// first four are the defaults. The first six each also passed a live post, read-back without a
+// time_to_live, and delete from a browser origin (CORS) on 2026-09-30, so the next two are the
+// first alternatives (`hosts add`, repair swaps). paste.evolix.org answers reads but refuses
+// browser posts.
 export const INSTANCES = [
   'https://pb.envs.net',
   'https://paste.systemli.org',
   'https://extrait.facil.services',
   'https://bin.disroot.org',
-  'https://paste.evolix.org',
   'https://cryptostorm.is/paste',
   'https://paste.d-ku.de',
+  'https://paste.evolix.org',
   'https://0g.gg',
   'https://paste.unredacted.org',
   'https://bin.infra.mee6.cloud',
   'https://paste.coalserver.de'
 ]
-export const DEFAULT_COUNT = 3
+export const DEFAULT_COUNT = 4
 
 const nameFor = (url) => 'pb-' + new URL(url).hostname.replace(/^(www|paste|pb|bin)\./, '').split('.')[0]
 
