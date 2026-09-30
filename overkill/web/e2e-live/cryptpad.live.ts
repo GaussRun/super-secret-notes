@@ -10,8 +10,10 @@ const VAULT = 'overkill-dev-web-static';
 const NOTE = 'live cryptpad check';
 const TEXT = `web static cryptpad live check ${new Date().toISOString()}`;
 
+const MENU: Record<string, string> = { Notes: 'My notes', New: 'New note', Check: 'Check copies', Kit: 'Recovery kit', Hosts: 'Hosts', Status: 'Status' };
 async function nav(page: Page, label: string, path: string) {
-	await page.getByRole('navigation').getByRole('link', { name: label, exact: true }).click();
+	await page.getByTestId('menu-button').click();
+	await page.locator('#site-menu').getByRole('link', { name: MENU[label] ?? label, exact: true }).click();
 	await expect(page).toHaveURL(path);
 }
 

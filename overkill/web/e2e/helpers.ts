@@ -41,8 +41,19 @@ export const WORDLIST = new Set(readFileSync(new URL('../../cli/src/wordlist/eff
 
 /** In-app navigation through the header (a page load would lock the vault, by design). */
 const PATHS = { Notes: '/notes/', New: '/new/', Check: '/check/', Status: '/status/', Hosts: '/hosts/', Kit: '/recovery-kit/', Settings: '/settings/', Trust: '/trust/' };
+// the menu's own labels for them
+export const MENU = { Notes: 'My notes', New: 'New note', Check: 'Check copies', Status: 'Status', Hosts: 'Hosts', Kit: 'Recovery kit', Settings: 'Settings', Trust: 'Trust model' };
+
+/** Open the header menu (if closed). */
+export async function openMenu(page: Page) {
+	const button = page.getByTestId('menu-button');
+	if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+	await expect(page.locator('#site-menu')).toBeVisible();
+}
+
 export async function nav(page: Page, label: keyof typeof PATHS) {
-	await page.getByRole('navigation').getByRole('link', { name: label, exact: true }).click();
+	await openMenu(page);
+	await page.locator('#site-menu').getByRole('link', { name: MENU[label], exact: true }).click();
 	await expect(page).toHaveURL(url(PATHS[label]));
 }
 

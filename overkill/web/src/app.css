@@ -9,16 +9,44 @@
 	--amber: #ffcf3f;
 	--red: #ff5c6c;
 	--cyan: #5cd6ff;
+	--on-accent: #04110a;
+	--on-danger: #1a0205;
+	--header-bg: rgba(11, 15, 20, 0.92);
+	--log-bg: #070a0e;
+	--texture: rgba(57, 255, 136, 0.025);
+	--glow: rgba(92, 214, 255, 0.12);
 	--mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 	--sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 	color-scheme: dark;
+}
+/* the same page in light mode (the operating system's preference) */
+@media (prefers-color-scheme: light) {
+	:root {
+		--bg: #f5f7f9;
+		--panel: #ffffff;
+		--panel-2: #eef2f5;
+		--line: #d3dce4;
+		--text: #17202a;
+		--muted: #5a6978;
+		--green: #0a7f45;
+		--amber: #9a6a00;
+		--red: #c3303d;
+		--cyan: #0b63a0;
+		--on-accent: #ffffff;
+		--on-danger: #ffffff;
+		--header-bg: rgba(245, 247, 249, 0.94);
+		--log-bg: #f0f3f6;
+		--texture: rgba(0, 0, 0, 0);
+		--glow: rgba(11, 99, 160, 0.06);
+		color-scheme: light;
+	}
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
 body {
 	background-image:
-		repeating-linear-gradient(0deg, rgba(57, 255, 136, 0.025) 0 1px, transparent 1px 3px),
-		radial-gradient(circle at 20% -10%, rgba(92, 214, 255, 0.12), transparent 50%);
+		repeating-linear-gradient(0deg, var(--texture) 0 1px, transparent 1px 3px),
+		radial-gradient(circle at 20% -10%, var(--glow), transparent 50%);
 	min-height: 100vh;
 }
 a { color: var(--cyan); }
@@ -40,12 +68,12 @@ input[type='text'], input[type='password'], input[type='email'], textarea, selec
 textarea { font-family: var(--mono); min-height: 220px; resize: vertical; }
 input:focus, textarea:focus { outline: 2px solid var(--green); outline-offset: 1px; }
 button, .button {
-	display: inline-block; background: var(--green); color: #04110a; border: 0; border-radius: 8px;
+	display: inline-block; background: var(--green); color: var(--on-accent); border: 0; border-radius: 8px;
 	padding: 10px 16px; font-weight: 700; font-family: var(--mono); cursor: pointer; text-decoration: none;
 	margin: 4px 6px 4px 0;
 }
 button.secondary, .button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
-button.danger { background: var(--red); color: #1a0205; }
+button.danger { background: var(--red); color: var(--on-danger); }
 button:disabled { opacity: 0.5; cursor: progress; }
 .badge {
 	display: inline-block; font-family: var(--mono); font-size: 0.72rem; font-weight: 700; padding: 2px 8px;

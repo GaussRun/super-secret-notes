@@ -61,7 +61,7 @@
 </div>
 
 <style>
-	.warning { font-family: var(--mono); font-weight: 800; font-size: 1.15rem; color: #1a0205; background: var(--red); padding: 12px; border-radius: 8px; margin: 10px 0; }
+	.warning { font-family: var(--mono); font-weight: 800; font-size: 1.15rem; color: var(--on-danger); background: var(--red); padding: 12px; border-radius: 8px; margin: 10px 0; }
 	.qr-wrap { background: #ffffff; padding: 8px; border-radius: 8px; display: inline-block; max-width: 100%; }
 	.qr-wrap svg { display: block; max-width: 100%; height: auto; }
 	.small { font-size: 0.85rem; }

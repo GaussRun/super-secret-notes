@@ -19,7 +19,7 @@
 {/if}
 
 <style>
-	.log { font-family: var(--mono); font-size: 0.82rem; background: #070a0e; }
+	.log { font-family: var(--mono); font-size: 0.82rem; background: var(--log-bg); }
 	.title { color: var(--amber); text-transform: uppercase; letter-spacing: 0.15em; font-size: 0.75rem; margin-bottom: 8px; }
 	ol { list-style: none; margin: 0; padding: 0; }
 	li { display: grid; grid-template-columns: 4.2em 1fr; gap: 2px 10px; padding: 2px 0; }

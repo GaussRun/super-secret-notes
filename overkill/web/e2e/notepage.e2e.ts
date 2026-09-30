@@ -2,7 +2,7 @@
 // a per-note check, the guard against leaving with unpublished changes; and Sign out.
 import { test, expect, type Page } from '@playwright/test';
 import { startAllFakes, type Fakes } from './fakes';
-import { url, useFakes, watchErrors, readNote, nav } from './helpers';
+import { url, useFakes, watchErrors, readNote, nav, openMenu } from './helpers';
 
 let fakes: Fakes;
 let page: Page;
@@ -62,7 +62,8 @@ test('dirty: "Publish changes" appears after an edit, leaving asks first, and it
 		asked = d.message();
 		void d.dismiss();
 	});
-	await page.getByRole('navigation').getByRole('link', { name: 'Notes', exact: true }).click();
+	await openMenu(page);
+	await page.locator('#site-menu').getByRole('link', { name: 'My notes', exact: true }).click();
 	await expect.poll(() => asked).toContain('not published');
 	await expect(page).toHaveURL(url(`/notes/${encodeURIComponent(NOTE)}/`));
 
@@ -74,10 +75,13 @@ test('dirty: "Publish changes" appears after an edit, leaving asks first, and it
 });
 
 test('Sign out clears the keys: the unlock page asks for the passphrase, also after a reload', async () => {
+	await openMenu(page);
 	await page.getByTestId('sign-out').click();
 	await expect(page).toHaveURL(url('/unlock/'));
 	await expect(page.getByTestId('lock-status')).toContainText('LOCKED');
+	await openMenu(page);
 	await expect(page.getByTestId('lock-status').getByRole('link', { name: 'Recover' })).toBeVisible();
+	await page.keyboard.press('Escape');
 	await page.reload();
 	await expect(page.getByTestId('unlock-form')).toBeVisible();
 	await page.getByLabel('Passphrase').fill(passphrase);

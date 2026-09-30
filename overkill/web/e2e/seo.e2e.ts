@@ -32,7 +32,8 @@ test('the page runs with the new head: no CSP violations, the JSON-LD is there, 
 	const errors = watchErrors(page);
 	await page.goto(url('/'));
 	await expect(page).toHaveTitle(TITLE);
-	await expect(page.getByTestId('what-it-is')).toContainText('public computer');
+	await expect(page.getByTestId('what-it-is')).toContainText('a dozen free hosts');
+	await expect(page.getByTestId('quick-flow')).toContainText('public computer');
 	const ld = await page.locator('script[type="application/ld+json"]').textContent();
 	expect(JSON.parse(ld!).offers.price).toBe('0');
 	expect(errors).toEqual([]);
@@ -79,7 +80,7 @@ test('/thanks/ and the landing strip thank the hosts and projects, with support 
 	await expect(strip.getByRole('link', { name: 'PrivateBin' })).toBeVisible();
 	await expect(strip.getByRole('link', { name: 'nostr.mom' })).toBeVisible();
 	await expect(page.locator('footer a', { hasText: 'thank you' })).toHaveAttribute('href', /\/thanks\/$/);
-	await expect(page.getByTestId('what-it-is')).toContainText('many independent places');
+	await expect(page.getByTestId('steps')).toContainText('Losing any one of them');
 	await expect(page.locator('body')).not.toContainText(/grocer/i);
 });
 
