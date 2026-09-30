@@ -14,7 +14,8 @@
 		boxStroke: 'var(--line)',
 		accent: 'var(--green)',
 		row: 'var(--panel-2)',
-		tile: '#ffffff'
+		tile: '#ffffff',
+		warn: 'var(--amber)'
 	});
 	const logoHref = (f: string) => to(`/logos/${f}`);
 	const wide = $derived(diagramSvg('wide', { logoHref, style, id: `dg-wide-${size}` }));

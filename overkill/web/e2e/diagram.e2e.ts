@@ -23,7 +23,11 @@ for (const path of PAGES) {
 				const svg = figure.locator(w < 640 ? '.tall svg' : '.wide svg');
 				await expect(svg).toBeVisible();
 				await expect(svg).toHaveAttribute('role', 'img');
-				await expect(svg.locator('title')).toHaveText(/encrypted twice and scattered/);
+				await expect(svg.locator('title')).toHaveText(/our encryption, then each host's native encryption/);
+				await expect(svg.locator('[data-step="ours"]')).toContainText('Our encryption');
+				await expect(svg.locator('[data-step="ours"]')).toContainText('AES-256-GCM (HKDF keys)');
+				await expect(svg.locator('[data-layer="privatebin"]')).toHaveText('native: AES-256-GCM, key in the link');
+				await expect(svg.locator('[data-layer="blossom"]')).toHaveClass(/dg-ours/);
 				await expect(svg.locator('desc')).toContainText('any one healthy copy plus your vault name and passphrase');
 				await expect(svg).toContainText('12 copies');
 				for (const id of ['privatebin', 'nostr', 'blossom', 'optin']) await expect(svg.locator(`[data-host="${id}"]`)).toBeVisible();

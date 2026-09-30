@@ -9,8 +9,8 @@
 <p class="lead">
 	A note you cannot afford to lose is copied to many independent hosts, run by different people in different
 	places, none of which needs an account. Losing one host, or several, loses nothing. A vault name plus your
-	passphrase brings everything back on any device. Before a note leaves your device it is encrypted twice by us,
-	and each host adds its own layer on top.
+	passphrase brings everything back on any device. Before a note leaves your device it gets our encryption
+	(age + AES-256-GCM), then each host's native encryption on top.
 </p>
 
 <Diagram size="large" />
@@ -26,10 +26,10 @@
 </div>
 
 <div class="panel" data-testid="layers">
-	<h2>Encryption: three layers</h2>
-	<p>The first two are ours and run on your device (here: in this browser tab). The third is each host's own scheme.</p>
+	<h2>Our encryption, then each host's native encryption</h2>
+	<p>Our encryption has two layers and runs on your device (here: in this browser tab) before anything leaves it. Then each host applies its own native scheme, except Blossom, which has none, so we add one there.</p>
 
-	<h3>Layer 1 (ours): age</h3>
+	<h3>Our encryption, part 1: age</h3>
 	<p>
 		Every note is encrypted to the vault's own age X25519 identity, in age's binary format
 		(<a href="https://age-encryption.org/v1" rel="noopener">age v1 specification</a>, implemented by the
@@ -38,16 +38,16 @@
 		is encrypted with ChaCha20-Poly1305 in 64 KiB chunks.
 	</p>
 
-	<h3>Layer 2 (ours): AES-256-GCM</h3>
+	<h3>Our encryption, part 2: AES-256-GCM</h3>
 	<p>
-		The age output is encrypted again: <span class="mono">"OVK1" || nonce (12 random bytes) || AES-256-GCM(K_aes, nonce, layer 1, AAD = "OVK1" || blob id)</span>.
+		The age output is encrypted again: <span class="mono">"OVK1" || nonce (12 random bytes) || AES-256-GCM(K_aes, nonce, age output, AAD = "OVK1" || blob id)</span>.
 		The AAD binds each blob to its name, so a host cannot swap two notes. All keys come from the vault's random
 		32-byte master key through HKDF-SHA256 (WebCrypto) with distinct labels. The code is short and uses only
 		WebCrypto and age: <a href={CRYPTO_JS} rel="noopener" data-testid="crypto-js-link">overkill/cli/src/crypto.js on GitHub</a>
 		(the web app runs the same file).
 	</p>
 
-	<h3>Layer 3: each host's own encryption</h3>
+	<h3>Then each host's native encryption</h3>
 	<div class="table-scroll">
 		<table>
 			<thead><tr><th>Host</th><th>Its encryption (primary source)</th></tr></thead>
@@ -77,7 +77,7 @@
 	</div>
 	<p class="muted small">
 		Everything the zero-signup hosts' layer uses (paste keys, the NIP-44 key, the Blossom key, the CryptPad logins)
-		comes from your own vault, so layer 3 protects against a host leaking what it stores, not against someone who
+		comes from your own vault, so the hosts' layer protects against a host leaking what it stores, not against someone who
 		has your vault.
 	</p>
 </div>

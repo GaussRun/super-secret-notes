@@ -9,7 +9,8 @@ copied to a dozen independent free hosts run by different people in different pl
 Proton Drive, Filen and Fileverse). If some of them disappear, the others still have it, and
 `check` and `repair` tell you and fix it. Lose your laptop and you **recover with a vault name
 and passphrase** alone, on any machine. Before anything leaves your device, the note is
-**double-encrypted** (age, then AES-256-GCM), and each host adds its own layer on top. It comes
+**double-encrypted** with our encryption (age, then AES-256-GCM, both on your device), and then
+each host applies its native encryption on top. It comes
 as a **static web app plus CLI** (the `super-secret-notes` command) that read and write the
 same format, and the web app can hand a vault from a **public computer to phone via QR** code.
 
@@ -25,8 +26,8 @@ Source: https://github.com/GaussRun/super-secret-notes
   derived from your vault), 4 Nostr relays and 3 Blossom servers, each run by a different
   operator. MEGA, Proton Drive, Filen and Fileverse are opt-in.
 - **Encrypts every note twice** on your machine before it leaves: age first, then AES-256-GCM,
-  with keys that only exist inside a passphrase-protected `vault.age`. Each copy then gets one
-  more layer from that host's own scheme (see [How the encryption works](#how-the-encryption-works)).
+  with keys that only exist inside a passphrase-protected `vault.age`. Each copy then gets
+  that host's native encryption on top (see [How the encryption works](#how-the-encryption-works)).
 - **Reads from whichever copy is healthy:** `get` takes the first copy that passes every check
   and quietly falls back to the next one if a copy is missing, damaged or out of date.
 - **Keeps score and heals itself:** `check` verifies every copy, `status` shows the health
@@ -190,12 +191,12 @@ Details on deploying, the Content-Security-Policy and the browser CORS checks pe
 Every host counts as its own operator, and redundancy comes from different operators, not from
 several accounts at one provider (`init` warns if two backends share one).
 
-| Backend | Default? | What you need | Host-side layer (on top of our two) | Retention | Holds the index? |
+| Backend | Default? | What you need | Native encryption (on top of ours) | Retention | Holds the index? |
 |---|---|---|---|---|---|
 | PrivateBin (`privatebin`) | yes, 3 | nothing | PrivateBin's AES-256-GCM, random key per paste (the key is the URL `#fragment`, kept in `secrets.ovk` and the encrypted index) | never, host-confirmed (the stored paste has no expiry); volunteer-run, so instances do disappear | no |
 | CryptPad, derived account (`cryptpad`) | yes, 2 | nothing: username and password are derived from your vault, one account per instance | CryptPad's own end-to-end encryption, through CryptPad's client modules | while the account is active (instance policy; varies per instance) | yes |
 | Nostr relays (`nostr`) | yes, 4. **Experimental** | nothing: the key is derived from your vault | NIP-44 v2 encryption to a vault-derived key | none promised; we republish on our own schedule (assumed 120 days) | yes |
-| Blossom servers (`blossom`) | yes, 3. **Experimental** | nothing: uploads are signed with a vault-derived key | AES-256-GCM under a vault-derived key; the blob's sha256 is checked before decrypting | none promised; we republish on our own schedule (assumed 120 days) | no |
+| Blossom servers (`blossom`) | yes, 3. **Experimental** | nothing: uploads are signed with a vault-derived key | none native, so our extra AES-256-GCM under a vault-derived key; the blob's sha256 is checked before decrypting | none promised; we republish on our own schedule (assumed 120 days) | no |
 | MEGA (`mega`) | opt-in | an account (email and password) | MEGA's end-to-end encryption | while the account exists (20 GB free) | yes |
 | Proton Drive (`proton-cli`) | opt-in | an account plus Proton's official `proton-drive` CLI, logged in once | Proton's end-to-end encryption | while the account exists; old versions kept as revisions | yes |
 | Filen (`filen`) | opt-in | an account (email and password, no 2FA yet) | Filen's end-to-end encryption | while the account exists (10 GB free, Germany) | yes |
@@ -269,15 +270,28 @@ rclone keeps its tokens in its own config.
 
 ## How the encryption works
 
-Three layers, in this order. The first two are ours and run on your device; the third is each
-host's own scheme.
+**Our encryption, then each host's native encryption.** First our encryption: age, then
+AES-256-GCM, both applied on your device before anything leaves it. Then each host's native
+encryption: PrivateBin's AES-256-GCM, CryptPad's XSalsa20-Poly1305, Nostr's NIP-44. Blossom has
+none, so we add an extra AES-256-GCM layer there.
 
 ```mermaid
 flowchart LR
   P[your passphrase] -- "age scrypt recipient" --> V["vault.age<br/>age identity + 32-byte master"]
   V -- "HKDF-SHA256" --> K["K_aes, K_name,<br/>K_nostr, K_blossom,<br/>CryptPad and Fileverse logins"]
-  N[note] --> L1["layer 1: age<br/>X25519 + ChaCha20-Poly1305"] --> L2["layer 2: AES-256-GCM (K_aes)"] --> B["OVK1 blob"]
-  B --> H1[PrivateBin: AES-256-GCM] & H2[CryptPad: XSalsa20-Poly1305] & H3[Nostr: NIP-44 v2] & H4[Blossom: our extra AES-256-GCM] & H5[MEGA / Proton / Filen / Fileverse]
+  subgraph ours["our encryption, on your device"]
+    L1["age<br/>X25519 + ChaCha20-Poly1305"] --> L2["AES-256-GCM (K_aes)"]
+  end
+  subgraph native["each host's native encryption"]
+    H1[PrivateBin: AES-256-GCM]
+    H2[CryptPad: XSalsa20-Poly1305]
+    H3[Nostr: NIP-44 v2]
+    H5[MEGA / Proton / Filen / Fileverse]
+  end
+  N[note] --> L1
+  L2 --> B["OVK1 blob"]
+  B --> H1 & H2 & H3 & H5
+  B --> H4["Blossom: none native,<br/>so our extra AES-256-GCM"]
 ```
 
 The same thing in plain text:
@@ -285,35 +299,36 @@ The same thing in plain text:
 ```
 passphrase ──age scrypt──> vault.age = { age X25519 identity, master (32 random bytes) }
                                               │
-                                              └─HKDF-SHA256─> K_aes     (layer 2)
+                                              └─HKDF-SHA256─> K_aes     (our AES-256-GCM)
                                                               K_name    (file names)
                                                               K_nostr   (Nostr key, Blossom signing)
                                                               K_blossom (extra Blossom layer)
                                                               CryptPad username + password per instance
                                                               Fileverse wallet and API key (opt-in)
 
-note ─layer 1: age─> ─layer 2: AES-256-GCM(K_aes)─> "OVK1" blob ─layer 3: each host─> 12 copies
+note ─age─> ─AES-256-GCM(K_aes)─> "OVK1" blob ─each host's native encryption─> 12 copies
+     └───── our encryption ─────┘  (on your device; Blossom gets our extra AES-256-GCM)
 
 passphrase + vault name ──scrypt(N=2^18)──> discovery key (Nostr) ─> vault.age + recovery record
 ```
 
-**Layer 1: age.** Every note is encrypted to the vault's own age X25519 identity, in age's
+**Our encryption, step 1: age.** Every note is encrypted to the vault's own age X25519 identity, in age's
 binary format ([age v1 specification](https://age-encryption.org/v1), implemented by the
 [typage](https://github.com/FiloSottile/typage) library). A fresh file key is wrapped with an
 X25519 key agreement, HKDF-SHA-256 and ChaCha20-Poly1305; the note itself is encrypted with
 ChaCha20-Poly1305 in 64 KiB chunks under a key derived from that file key with HKDF-SHA-256.
 
-**Layer 2: AES-256-GCM.** The age output is encrypted again:
-`"OVK1" || nonce (12 random bytes) || AES-256-GCM(K_aes, nonce, layer 1, AAD = "OVK1" || blob id)`.
+**Our encryption, step 2: AES-256-GCM.** The age output is encrypted again:
+`"OVK1" || nonce (12 random bytes) || AES-256-GCM(K_aes, nonce, age output, AAD = "OVK1" || blob id)`.
 The AAD binds each blob to its name, so a host cannot swap two notes. All keys come from the
 vault's random 32-byte master through HKDF-SHA256 with an empty salt and a distinct label
 (`"overkill v1 aes"`, `"overkill v1 name"`, `"overkill v1 nostr"`, `"overkill v1 blossom"`,
 `"overkill v1 cryptpad:<host>"`, `"overkill v1 fileverse"` and a few more). The code is short
 and uses only WebCrypto and age: [overkill/cli/src/crypto.js](overkill/cli/src/crypto.js).
 
-**Layer 3: each host's own encryption.**
+**Then each host's native encryption.**
 
-| Host | Its encryption (primary source) |
+| Host | Its native encryption (primary source) |
 |---|---|
 | PrivateBin | AES-256-GCM, with the key derived by PBKDF2-HMAC-SHA256 (100,000 iterations) from a random 32-byte paste key that lives only in the URL fragment ([PrivateBin encryption format](https://github.com/PrivateBin/PrivateBin/wiki/Encryption-format)). We write pastes in that format; the paste URLs, keys included, stay in our encrypted index and `secrets.ovk`. |
 | CryptPad | XSalsa20-Poly1305 for document content and Ed25519 signatures ([CryptPad white paper](https://blog.cryptpad.org/images/whitepaper.pdf)), through CryptPad's own client modules. |
@@ -322,7 +337,7 @@ and uses only WebCrypto and age: [overkill/cli/src/crypto.js](overkill/cli/src/c
 | MEGA, Proton Drive, Filen, Fileverse (opt-in) | Their client-side encryption, done by their official SDK, CLI or library ([MEGA](https://mega.io/security), [Proton Drive](https://proton.me/drive/security), [Filen](https://filen.io/), [Fileverse](https://fileverse.io/)). |
 
 Everything the zero-signup hosts' layer uses (paste keys, NIP-44 key, Blossom key, CryptPad
-logins) comes from your own vault, so layer 3 protects against a host leaking what it stores,
+logins) comes from your own vault, so this outer layer protects against a host leaking what it stores,
 not against someone who has your vault.
 
 **Keys and passphrase.** `vault.age` holds the age identity and the master, encrypted with your
@@ -378,7 +393,7 @@ line, no "forgot password". That is the point.
   passphrase). Anyone who reads it reads your notes. Paper in a drawer beats a screenshot in the cloud.
 - **The extra layers are depth, not the main defense.** One good layer (age) would already be
   fine. The real risks are the passphrase, the recovery kit lying around, and the laptop you type on.
-  The zero-signup hosts' third layer is applied by this client with keys from your own vault,
+  The zero-signup hosts' native encryption is applied by this client with keys from your own vault,
   so it guards against a host leaking what it stores, not against someone who has your vault.
   Several copies with several operators is the part that actually helps.
 - **Volunteer hosts disappear.** Roughly 60% of the PrivateBin instances listed in 2021 are gone

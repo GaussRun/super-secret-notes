@@ -3,7 +3,7 @@
 A note you cannot afford to lose, saved in many independent places, recoverable anywhere with a
 vault name plus passphrase. In a browser tab, with no server of ours.
 
-![How a note is encrypted twice (age, then AES-256-GCM) and copied to 3 PrivateBin instances, 2 CryptPad instances, 4 Nostr relays and 3 Blossom servers, each adding its own layer; any one healthy copy plus the vault name and passphrase brings it back](static/diagram.svg)
+![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 3 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305), 4 Nostr relays (native NIP-44) and 3 Blossom servers (no native encryption, so we add AES-256-GCM); any one healthy copy plus the vault name and passphrase brings it back](static/diagram.svg)
 
 The diagram is `static/diagram.svg` (regenerate with `node scripts/diagram.mjs`; the same layout
 renders inline on the landing page and on /how-it-works/). Logo sources and terms:

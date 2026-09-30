@@ -6,15 +6,15 @@ Part of **Super Secret Notes by GaussRun**. The command is `super-secret-notes` 
 **A note you cannot afford to lose, saved in many independent places, recoverable anywhere with
 a vault name plus passphrase.**
 
-![How a note is encrypted twice (age, then AES-256-GCM) and copied to 3 PrivateBin instances, 2 CryptPad instances, 4 Nostr relays and 3 Blossom servers, each adding its own layer; any one healthy copy plus the vault name and passphrase brings it back](../web/static/diagram.svg)
+![Our encryption (age + AES-256-GCM) on your device, then each host's native encryption: copies go to 3 PrivateBin instances (native AES-256-GCM), 2 CryptPad instances (native XSalsa20-Poly1305), 4 Nostr relays (native NIP-44) and 3 Blossom servers (no native encryption, so we add AES-256-GCM); any one healthy copy plus the vault name and passphrase brings it back](../web/static/diagram.svg)
 
 ![super-secret-notes demo: one put to 12 zero-signup hosts, check, a flipped byte on PrivateBin, fallback read, repair, then recovery on a new laptop from the vault name and passphrase](demo/overkill-cli.gif)
 
 `super-secret-notes` copies each note to many independent hosts (by default 12 that need no
 signup: PrivateBin, CryptPad, Nostr relays, Blossom servers), so losing one host, or several,
 loses nothing. `check` verifies every copy, `repair` re-uploads broken ones, and a vault name
-plus passphrase brings everything back on a new machine. Before a note leaves your machine it is
-encrypted twice (age, then AES-256-GCM), and each host adds its own layer on top (details:
+plus passphrase brings everything back on a new machine. Before a note leaves your machine it gets
+our encryption (age + AES-256-GCM), then each host's native encryption on top (details:
 [How it works](https://gaussrun.github.io/super-secret-notes/how-it-works/) and the format spec,
 [docs/OVERKILL.md](../../docs/OVERKILL.md)). Reading picks the first copy that passes every check and quietly falls back to the
 next one if a copy is missing, damaged, or out of date.

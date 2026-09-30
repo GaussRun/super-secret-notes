@@ -25,7 +25,7 @@
 	<h2>How it works</h2>
 	<ol>
 		<li><strong>Write your note.</strong> It stays readable only here, on your device.</li>
-		<li><strong>We encrypt it twice and spread it out.</strong> Copies go to a dozen independent free hosts, which need no signup, and each adds its own lock. Losing any one of them, or several, loses nothing.</li>
+		<li><strong>We encrypt it, then spread it out.</strong> Our encryption (age + AES-256-GCM) comes first, on your device; then each host's native encryption on top. Copies go to a dozen independent free hosts, which need no signup. Losing any one of them, or several, loses nothing.</li>
 		<li><strong>Get it back anywhere.</strong> Your vault name and passphrase are all you need, on any device. Your password manager can keep them.</li>
 	</ol>
 	<p><a href={to('/how-it-works/')}>The details, with every source</a></p>
