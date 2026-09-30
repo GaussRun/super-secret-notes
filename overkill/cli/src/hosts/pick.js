@@ -1,19 +1,13 @@
 // Using the host cache: which hosts `init` offers, and which configured backends look dead.
 import { knownHosts, loadCache } from './cache.js'
+import { site } from '../defaults-core.js'
 
 const DAY = 86_400_000
 export const DEAD_AFTER_DAYS = 7
 // OVERKILL_DEAD_AFTER_DAYS changes it (0 in tests: any backend failing right now counts)
 export const deadAfterDays = () => (process.env.OVERKILL_DEAD_AFTER_DAYS !== undefined ? Number(process.env.OVERKILL_DEAD_AFTER_DAYS) : DEAD_AFTER_DAYS)
 
-/** Rough registrable domain ("paste.example.co.uk" -> "example.co.uk"): one operator, one pick. */
-export function site (url) {
-  const u = new URL(url)
-  if (/^[\d.]+$/.test(u.hostname)) return u.host // an IP address (tests): one per port
-  const labels = u.hostname.split('.')
-  const n = labels.length >= 3 && labels.at(-1).length === 2 && labels.at(-2).length <= 3 ? 3 : 2
-  return labels.slice(-n).join('.')
-}
+export { site }
 
 /**
  * Hosts of one type in the order `init` should use them: healthy built-in ones (in the built-in

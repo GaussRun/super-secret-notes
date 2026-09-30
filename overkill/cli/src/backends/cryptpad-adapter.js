@@ -39,7 +39,14 @@ export function createCryptpad (cfg, ctx, { loadDrive, resolveSecret }) {
     return { user: username, pass: password }
   }
 
-  async function open () {
+  // one login (or registration) at a time: parallel calls share it instead of racing to register twice
+  let opening = null
+  function open () {
+    opening ??= openOnce().catch((err) => { opening = null; throw err })
+    return opening
+  }
+
+  async function openOnce () {
     if (drive) return drive
     const { CryptPadBackend, CryptPadSession } = await loadDrive()
     const { user, pass } = await credentials()
@@ -48,7 +55,7 @@ export function createCryptpad (cfg, ctx, { loadDrive, resolveSecret }) {
     } catch (err) {
       if (!cfg.derived || err.code !== 'NO_SUCH_USER') throw err
       logger.info(`${cfg.name}: creating this vault's account on ${new URL(origin).host} (takes a few seconds)`)
-      await CryptPadSession.register({ origin, user, pass })
+      await CryptPadSession.register({ origin, user, pass, absent: true })
       drive = await CryptPadBackend.open({ origin, user, pass, baseFolder: root })
     }
     return drive
@@ -85,6 +92,7 @@ export function createCryptpad (cfg, ctx, { loadDrive, resolveSecret }) {
     async close () {
       drive?.close()
       drive = null
+      opening = null
     }
   }
 }

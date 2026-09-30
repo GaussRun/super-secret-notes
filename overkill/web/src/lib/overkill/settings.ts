@@ -8,6 +8,8 @@ import { DEFAULT_RELAYS } from '$cli/bootstrap.js';
 import { SIGNUP_INSTANCES } from '$cli/backends/cryptpad-adapter.js';
 import { CRYPTPAD_NO_BROWSER } from './backends';
 import { backendConfig } from '$cli/defaults-core.js';
+import { FALLBACKS } from '$cli/fallbacks.js';
+import { NO_BROWSER as PB_NO_BROWSER } from '$cli/backends/privatebin.js';
 
 export interface Hosts {
 	privatebin: string[];
@@ -19,7 +21,15 @@ export interface Hosts {
 	discovery: string[];
 	/** pause between two publishes to one relay (relays rate-limit per IP) */
 	nostrPauseMs: number;
+	/** setup fallbacks: known-good hosts that stand in for a default that fails, per type */
+	fallbacks: Record<'privatebin' | 'nostr' | 'cryptpad' | 'blossom', string[]>;
+	/** how long one host may take for one call before it counts as FAILED (ms) */
+	timeouts: { host: number; cryptpad: number; nostr: number };
 }
+
+// CryptPad's first use registers the account and opens the drive (several round trips); a Nostr
+// note goes out in chunks with a pause between them
+export const DEFAULT_TIMEOUTS = { host: 20_000, cryptpad: 45_000, nostr: 60_000 };
 
 export interface BackendCfg {
 	name: string;
@@ -41,7 +51,15 @@ export function defaultHosts(): Hosts {
 		// the CLI's signup instances that let other origins use their API
 		cryptpad: SIGNUP_INSTANCES.filter((u: string) => !CRYPTPAD_NO_BROWSER.includes(new URL(u).host)),
 		discovery: [...DEFAULT_RELAYS],
-		nostrPauseMs: 3000
+		nostrPauseMs: 3000,
+		// the CLI's fallbacks, minus hosts a browser page cannot use
+		fallbacks: {
+			privatebin: FALLBACKS.privatebin.filter((u: string) => !PB_NO_BROWSER.includes(u)),
+			nostr: [...FALLBACKS.nostr],
+			cryptpad: FALLBACKS.cryptpad.filter((u: string) => !CRYPTPAD_NO_BROWSER.includes(new URL(u).host)),
+			blossom: [...FALLBACKS.blossom]
+		},
+		timeouts: { ...DEFAULT_TIMEOUTS }
 	};
 }
 
@@ -79,8 +97,21 @@ export function loadHosts(): Hosts {
 		blossom: urls(saved.blossom) ?? d.blossom,
 		cryptpad: urls(saved.cryptpad) ?? d.cryptpad,
 		discovery: urls(saved.discovery) ?? d.discovery,
-		nostrPauseMs: typeof saved.nostrPauseMs === 'number' && saved.nostrPauseMs >= 0 ? saved.nostrPauseMs : d.nostrPauseMs
+		nostrPauseMs: typeof saved.nostrPauseMs === 'number' && saved.nostrPauseMs >= 0 ? saved.nostrPauseMs : d.nostrPauseMs,
+		fallbacks: fallbacksFrom(saved.fallbacks, d.fallbacks),
+		timeouts: timeoutsFrom(saved.timeouts, d.timeouts)
 	};
+}
+
+function fallbacksFrom(v: unknown, d: Hosts['fallbacks']): Hosts['fallbacks'] {
+	const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+	return { privatebin: urls(o.privatebin) ?? d.privatebin, nostr: urls(o.nostr) ?? d.nostr, cryptpad: urls(o.cryptpad) ?? d.cryptpad, blossom: urls(o.blossom) ?? d.blossom };
+}
+
+function timeoutsFrom(v: unknown, d: Hosts['timeouts']): Hosts['timeouts'] {
+	const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+	const ms = (x: unknown, fallback: number) => (typeof x === 'number' && x > 0 ? x : fallback);
+	return { host: ms(o.host, d.host), cryptpad: ms(o.cryptpad, d.cryptpad), nostr: ms(o.nostr, d.nostr) };
 }
 
 export function saveHosts(h: Hosts | null): void {

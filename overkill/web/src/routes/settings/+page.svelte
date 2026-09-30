@@ -22,7 +22,7 @@
 		e.preventDefault();
 		err = '';
 		msg = '';
-		const next: Hosts = { privatebin: parse(privatebin), nostr: parse(nostr), blossom: parse(blossom), cryptpad: parse(cryptpad), discovery: parse(discovery), nostrPauseMs: Number(pause) || 0 };
+		const next: Hosts = { privatebin: parse(privatebin), nostr: parse(nostr), blossom: parse(blossom), cryptpad: parse(cryptpad), discovery: parse(discovery), nostrPauseMs: Number(pause) || 0, fallbacks: h.fallbacks, timeouts: h.timeouts };
 		for (const u of [...next.privatebin, ...next.blossom, ...next.cryptpad]) if (!/^https:\/\//.test(u) && !/^http:\/\/127\.0\.0\.1[:/]/.test(u)) return (err = `not an https URL: ${u}`);
 		for (const u of [...next.nostr, ...next.discovery]) if (!/^wss:\/\//.test(u) && !/^ws:\/\/127\.0\.0\.1[:/]/.test(u)) return (err = `not a wss URL: ${u}`);
 		if (!next.nostr.length) return (err = 'at least one Nostr relay: the index lives there');

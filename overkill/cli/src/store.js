@@ -6,6 +6,31 @@ export const STATUS = { OK: 'OK', MISSING: 'MISSING', CORRUPT: 'CORRUPT', STALE:
 
 const bytesEqual = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Failure handling (docs/OVERKILL.md): best effort, every host on its own. An operation succeeds
+// once MIN_COPIES hosts hold the copy; fewer is kept and flagged for `repair`.
+export const MIN_COPIES = 2
+// how long one host may take for one call before it counts as FAILED (an adapter's own
+// `timeoutMs` wins; the web app sets shorter ones)
+export const DEFAULT_HOST_TIMEOUT_MS = 120_000
+
+function withTimeout (promise, ms, what) {
+  let timer
+  const limit = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error(`${what}: no answer in ${ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${ms} ms`}`)), ms) })
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer))
+}
+
+/** Give every call on this adapter a deadline, so one silent host never blocks the rest. */
+export function bounded (b, ms = DEFAULT_HOST_TIMEOUT_MS) {
+  if (b.bounded) return b
+  const limit = b.timeoutMs ?? ms
+  for (const m of ['put', 'get', 'exists', 'list']) {
+    const f = b[m]
+    if (typeof f === 'function' && limit) b[m] = (...args) => withTimeout(f.apply(b, args), limit, b.name)
+  }
+  b.bounded = true
+  return b
+}
 const { vault: VAULT_KEY, index: INDEX_KEY } = c.HEALTH_KEYS
 
 export class Overkill {
@@ -19,9 +44,12 @@ export class Overkill {
    * @param {'always'|'manual'|'never'} [o.indexSync] whether index writes go to the backends
    * @param {{debug: Function, info: Function, warn: Function}} [o.logger] default: the winston logger
    * @param {() => Date} [o.now] clock for the health ledger (tests)
+   * @param {number} [o.hostTimeoutMs] deadline for one call on one host (adapters' own `timeoutMs` wins)
    */
-  constructor ({ backends, keys, vaultBytes, logger = defaultLogger, indexCache = null, now = () => new Date(), indexSync = 'always' }) {
+  constructor ({ backends, keys, vaultBytes, logger = defaultLogger, indexCache = null, now = () => new Date(), indexSync = 'always', hostTimeoutMs = DEFAULT_HOST_TIMEOUT_MS }) {
     if (!backends.length) throw new Error('no backends configured')
+    this.hostTimeoutMs = hostTimeoutMs
+    for (const b of backends) bounded(b, hostTimeoutMs)
     if (!['always', 'manual', 'never'].includes(indexSync)) throw new Error(`index_sync must be always, manual or never (got ${indexSync})`)
     this.backends = backends
     // backends at server-chosen addresses (pastes, Blossom) never hold the index
@@ -68,10 +96,43 @@ export class Overkill {
     }))
   }
 
-  async uploadVault () {
+  /**
+   * vault.age to every backend. `next(failed)` (setup only) offers a substitute adapter for a
+   * backend that failed, or null; the first one that takes vault.age replaces it here and the
+   * result says so (`replaced`: the failed backend's name), so the caller can update its config.
+   */
+  async uploadVault ({ next } = {}) {
     const res = await this.each((b) => b.put(c.paths.vault, this.vaultBytes))
-    for (const r of res) if (!r.ok) this.log.warn(`${r.backend.name}: vault.age upload failed: ${r.error.message}`)
+    for (const r of res) if (!r.ok) this.log.warn(`${r.backend.name}: vault.age upload FAILED: ${r.error.message}`)
+    if (next) {
+      await Promise.all(res.filter((r) => !r.ok).map(async (r) => {
+        for (let cand = await next(r.backend); cand; cand = await next(r.backend)) {
+          bounded(cand, this.hostTimeoutMs)
+          if (this.keys) cand.unlock?.(this.keys)
+          this.log.info(`${r.backend.name} failed; trying ${cand.name} instead`)
+          try {
+            await cand.put(c.paths.vault, this.vaultBytes)
+          } catch (err) {
+            this.log.warn(`${cand.name}: vault.age upload FAILED: ${err.message}`)
+            await cand.close?.().catch(() => {})
+            continue
+          }
+          this.log.info(`${cand.name}: vault.age stored (in place of ${r.backend.name})`)
+          this.replaceBackend(r.backend, cand)
+          Object.assign(r, { backend: cand, ok: true, replaced: r.backend.name, error: undefined })
+          break
+        }
+      }))
+    }
     return res
+  }
+
+  /** Swap one adapter for another (a setup fallback), keeping the read order. */
+  replaceBackend (old, next) {
+    // in place: callers keep the same list (it also carries the shared secret store)
+    this.backends[this.backends.indexOf(old)] = next
+    this.indexHolders = this.backends.filter((b) => b.addressing !== 'locator')
+    old.close?.().catch(() => {})
   }
 
   async readIndexes (holders = this.indexHolders) {
@@ -108,7 +169,14 @@ export class Overkill {
     const res = await this.readIndexes()
     for (const r of res) if (!r.ok) this.log.warn(`${r.backend.name}: index unreadable (${r.error.message})`)
     const good = res.filter((r) => r.ok)
-    if (!good.length) throw new Error('could not read the index from any backend')
+    if (!good.length) {
+      // no index holder answered: carry on with this machine's copy; the next write uploads it again
+      const local = await this.localIndex().catch(() => null)
+      if (!local) throw new Error('could not read the index from any backend')
+      this.log.warn('no index-holding host answered; using the index kept on this device (uploaded again with the next write)')
+      await this.learnLocators(local)
+      return local
+    }
     const merged = c.mergeIndexes(...good.map((r) => r.value))
     await this.learnLocators(merged)
     await this.cache(merged)
@@ -188,6 +256,7 @@ export class Overkill {
     const res = await Promise.all(targets.map((b) => b.put(c.paths.index, blob).then(
       () => ({ backend: b, ok: true }), (error) => ({ backend: b, ok: false, error }))))
     for (const r of res) if (!r.ok) this.log.warn(`${r.backend.name}: index upload failed: ${r.error.message}`)
+    if (targets.length && !res.some((r) => r.ok)) this.log.warn('the index is kept on this device only for now (no index-holding host took it); it is uploaded again with the next write')
     return res
   }
 
@@ -266,13 +335,15 @@ export class Overkill {
       if (r.ok) this.log.debug(`${r.backend.name}: stored ${c.paths.note(id)} (${blob.length} bytes)`)
       else this.log.warn(`${r.backend.name}: upload failed: ${r.error.message}`)
     }
-    if (!res.some((r) => r.ok)) throw new Error('upload failed on every backend, nothing was stored')
+    const stored = res.filter((r) => r.ok).length
+    if (!stored) throw new Error('upload failed on every backend, nothing was stored')
     for (const r of res) if (!r.ok) this.record(name, r.backend.name, STATUS.ERROR)
+    if (stored < MIN_COPIES) this.log.warn(`"${name}" is on only ${stored} host; repair copies it to the others once they answer`)
     // a spot check of other copies rides along with this index write; it never fails the put
     const sampled = sample ? await this.sample(index, { exclude: name }).catch((err) => { this.log.debug(`sample: ${err.message}`); return [] }) : []
     index.notes[name] = entry
     await this.writeIndex(index)
-    return { entry, sampled, results: res.map((r) => ({ backend: r.backend.name, ok: r.ok, error: r.error?.message })) }
+    return { entry, sampled, stored, results: res.map((r) => ({ backend: r.backend.name, ok: r.ok, error: r.error?.message })) }
   }
 
   /** Read from the first healthy backend; fall back to the next on any failure. */

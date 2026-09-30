@@ -39,7 +39,19 @@ test('setup form: note first, made-up 4-word vault name, password-manager fields
 	await expect(form).toHaveAttribute('method', 'post');
 	await expect(form).toHaveAttribute('action', '#');
 	await expect(page.getByLabel('Your secret')).toBeFocused();
-	await expect(page.getByLabel(/^Note name/)).toHaveValue('my first secret');
+	// the note name is optional, below the secret, made up from 3 list words, with a roll button
+	const noteName = page.getByLabel(/^Note name \(optional/);
+	const nameWords = (await noteName.inputValue()).split('-');
+	expect(nameWords).toHaveLength(3);
+	for (const w of nameWords) expect(WORDLIST.has(w), `${w} is an EFF list word`).toBe(true);
+	const order = await page.evaluate(() => {
+		const all = [...document.querySelectorAll('#note-text, #note-name')].map((e) => e.id);
+		return all;
+	});
+	expect(order).toEqual(['note-text', 'note-name']);
+	const firstName = await noteName.inputValue();
+	await form.getByRole('button', { name: 'roll', exact: true }).click();
+	await expect(noteName).not.toHaveValue(firstName);
 	const user = form.getByLabel('Vault name');
 	await expect(user).toHaveAttribute('name', 'username');
 	await expect(user).toHaveAttribute('autocomplete', 'username');

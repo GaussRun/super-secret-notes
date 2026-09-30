@@ -26,6 +26,7 @@
 	<h2>Redundancy first</h2>
 	<ul>
 		<li data-testid="default-counts">By default every note goes to {total(counts)} zero-signup hosts: {counts.privatebin} PrivateBin instances, CryptPad accounts made for your vault ({counts.cryptpad} instances from the command line; {inBrowser} in the browser, because the others only let their own pages use them) and {counts.nostr} Nostr relays. Blossom servers are opt-in, because they add no encryption of their own; MEGA, Proton Drive, Filen and Fileverse are opt-in in the command line tool.</li>
+		<li data-testid="failure-handling">Every host is tried on its own with a deadline: one that fails or does not answer is marked failed and retried later, a default that fails at setup gets a known-good stand-in, and a note counts as stored once 2 hosts hold it.</li>
 		<li>Reading takes the first copy that passes every check and falls back to the next one if a copy is missing, damaged or out of date.</li>
 		<li>An encrypted index lists your notes, where each copy lives and when each was last verified (the health ledger). <a href={to('/check/')}>Check</a> downloads and verifies every copy; Repair re-uploads broken ones from a healthy copy.</li>
 		<li>Free hosts promise little: PrivateBin keeps pastes with "never" expiry, but Nostr relays (and Blossom servers, if you add them) promise no retention, so we treat their copies as possibly gone 120 days after publishing and republish them (our policy, not theirs).</li>
@@ -34,6 +35,7 @@
 
 <div class="panel" data-testid="layers">
 	<h2>Our encryption, then each host's native encryption</h2>
+	<p class="muted small">A new CryptPad account shows up as one "404" in the browser console: that is the check for an existing login block, which the browser logs whatever the page does with the answer.</p>
 	<p>Our encryption has two layers and runs on your device (here: in this browser tab) before anything leaves it. Then each host applies its own native scheme, except Blossom (opt-in, not a default), which has none, so we add one there.</p>
 
 	<h3>Our encryption, part 1: age</h3>

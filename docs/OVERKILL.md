@@ -115,6 +115,26 @@ Second priority, opt-in: Proton Drive, MEGA, Filen (need a manual signup with em
 One-command goal: `super-secret-notes put <name> [file]` on a fresh machine creates the vault if there is none,
 provisions the default backends, uploads, and prints the recovery kit. No config file editing.
 
+### Failure handling (user rule, 2026-09-30; CLI and web: init/setup, put, repair)
+- Best effort, never all-or-nothing: every host is tried in parallel, each call with its own
+  deadline (CLI 120 s; web 20 s, CryptPad 45 s for its first-use registration, Nostr 60 s for
+  chunked notes). A host that fails or times out is marked FAILED in the log and the health
+  ledger, and the operation goes on.
+- Success at 2 copies: vault.age and each note count as stored once `MIN_COPIES` = 2 hosts hold
+  them ("Stored on N hosts; M failed (will retry)"). With 1 copy the work is kept (the vault
+  and the index stay encrypted on the device) and a clear warning offers "Retry now" (web) or
+  `super-secret-notes repair` (CLI). With 0 copies the operation fails and nothing is lost on
+  the device.
+- Fallbacks at setup: a default host that fails is replaced by the next known-good host of the
+  same type (`src/fallbacks.js`: the verified PrivateBin instances after the defaults, the other
+  good relays from docs/NOSTR.md), one operator per host as always, until the alternatives run
+  out. The stand-in goes into the config like any other backend. Later failures (put, check)
+  are left to `repair`, which swaps dead backends (docs: overkill/cli/docs/HOSTS.md).
+- The index: if no index-holding host (CryptPad, Nostr) takes it, it stays on the device (as
+  with `index_sync` manual) with a warning, and every later write uploads it again.
+- The recovery record goes to every relay that answers; recover-by-name needs at least 1, so
+  0 gives a clear warning (the recovery kit still works).
+
 ### Recovery with vault name + passphrase only (no locators needed)
 Zero-account hosts give no stable path, so bootstrap discovery through Nostr:
 - `discovery_key = scrypt(passphrase, salt = "overkill v1 discovery:" || NFC(vault_name), N=2^18, r=8, p=1, 32 bytes)`

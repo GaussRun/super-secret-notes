@@ -2,9 +2,10 @@ import { Command } from 'commander'
 import { readFile, writeFile, access } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import * as c from './crypto.js'
-import { BACKENDS, sharedOperators, holdsIndex } from './backends/index.js'
+import { BACKENDS, sharedOperators, holdsIndex, createBackend } from './backends/index.js'
+import { fallbackPicker } from './fallbacks.js'
 import { DEFAULT_ROOT, files, homeDir, makeBackends, open, readConfig, writePrivate, indexCache, INDEX_SYNC_MODES, lastSynced, markSynced, unlockSecrets } from './config.js'
-import { Overkill, summarize } from './store.js'
+import { Overkill, summarize, MIN_COPIES } from './store.js'
 import { ask, askSecret, askYesNo, passphrase } from './prompt.js'
 import { generatePassphrase, isStrongEnough, estimateBits, MIN_BITS, generateVaultName } from './passphrase.js'
 import { defaultBackends, validVaultName } from './defaults.js'
@@ -73,6 +74,7 @@ async function publishDiscovery ({ cfg, home, pass, vaultBytes, store, force = f
   try {
     const res = await publishIfNeeded({ cfg, home, passphrase: pass, vaultBytes, backends: store.backends, keys: store.keys, force })
     if (res) out(`recovery by name: bootstrap on ${res.filter((r) => r.ok).length}/${res.length} relays`)
+    if (res && !res.some((r) => r.ok)) logger.warn('recovery by name will not work until the bootstrap reaches a relay: run `super-secret-notes repair` later (the recovery kit works meanwhile)')
   } catch (err) {
     logger.warn(`recovery by name: bootstrap not published (${err.message}); the recovery kit still works`)
   }
@@ -250,14 +252,22 @@ async function setupVault (cfg, home, { pass, generated, scryptLogN, root, stric
           .then(() => out(`  ${b.name}: vault.age ${green('uploaded')}`), (err) => out(`  ${b.name}: vault.age ${red('FAILED: ' + err.message)}`))
       }
     } else {
-      const res = await store.uploadVault()
-      for (const r of res) out(`  ${r.backend.name}: vault.age ${r.ok ? green('uploaded') : red('FAILED: ' + r.error.message)}`)
-      if (!res.some((r) => r.ok)) throw new Error('vault.age could not be stored anywhere; nothing is set up remotely (local state is in ' + home + ')')
-      await store.writeIndex(await store.mergedIndex())
+      // a zero-config vault fills in for a failed default host with the next known-good one
+      const picker = fresh ? fallbackPicker(cfg, { make: (bc) => createBackend(bc, { root: cfg.root, home, secrets: backends.secrets }) }) : null
+      const res = await store.uploadVault({ next: picker ? (b) => picker.next(b) : undefined })
+      for (const r of res) out(`  ${r.backend.name}: vault.age ${r.ok ? green('uploaded') + (r.replaced ? ` (in place of ${r.replaced})` : '') : red('FAILED: ' + r.error.message)}`)
+      const stored = res.filter((r) => r.ok).length
+      if (!stored) throw new Error('vault.age could not be stored anywhere; nothing is set up remotely (local state is in ' + home + ')')
+      if (picker && picker.apply(res).length) await writePrivate(f.config, JSON.stringify(cfg, null, 2) + '\n')
+      const failed = res.length - stored
+      if (stored < MIN_COPIES) logger.warn(`vault.age is on only ${stored} host; run \`super-secret-notes repair\` once the others answer`)
+      else if (failed) out(`Stored on ${stored} hosts; ${failed} failed (\`super-secret-notes repair\` retries them)`)
+      // a new vault's index is empty; with no index-holding host answering it stays on this device for now
+      await store.writeIndex(c.emptyIndex())
     }
     await publishDiscovery({ cfg, home, pass, vaultBytes, store, force: !existing })
     out()
-    out(await recoveryKit({ vault, cfg, backends, generated }))
+    out(await recoveryKit({ vault, cfg, backends: store.backends, generated }))
     out(`\nLocal state: ${home}`)
   } finally {
     await store.close()

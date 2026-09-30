@@ -47,7 +47,8 @@ export interface FakeCryptpad {
 	close(): Promise<void>;
 }
 
-export async function startFakeCryptpad({ loginSalt = 'fake-instance-salt', corsOrigin = '*' } = {}): Promise<FakeCryptpad> {
+// `hangAuth`: /api/auth never answers (an instance that stops responding mid-registration)
+export async function startFakeCryptpad({ loginSalt = 'fake-instance-salt', corsOrigin = '*', hangAuth = false } = {}): Promise<FakeCryptpad> {
 	const blocks = new Map<string, Uint8Array>();
 	const challenges = new Map<string, string>();
 	const channels = new Map<string, Channel>();
@@ -88,6 +89,7 @@ export async function startFakeCryptpad({ loginSalt = 'fake-instance-salt', cors
 			return res.end(Buffer.from(bytes));
 		}
 		if (url.pathname.replace(/\/$/, '') === '/api/auth' && req.method === 'POST') {
+			if (hangAuth) return; // no answer, ever
 			const type = req.headers['content-type'] ?? '';
 			authRequests.push(type);
 			let body: Record<string, unknown>;

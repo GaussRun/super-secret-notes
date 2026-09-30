@@ -26,6 +26,15 @@ export function backendConfig (type, url, taken = new Set()) {
   return type === 'cryptpad' ? { name, type, origin: url, derived: true } : { name, type, url }
 }
 
+/** Rough registrable domain ("paste.example.co.uk" -> "example.co.uk"): one operator, one pick. */
+export function site (url) {
+  const u = new URL(url)
+  if (/^[\d.]+$/.test(u.hostname)) return u.host // an IP address (tests): one per port
+  const labels = u.hostname.split('.')
+  const n = labels.length >= 3 && labels.at(-1).length === 2 && labels.at(-2).length <= 3 ? 3 : 2
+  return labels.slice(-n).join('.')
+}
+
 /** Vault names salt the recovery key, so keep them simple and unambiguous. */
 export function validVaultName (name) {
   return typeof name === 'string' && /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,62}$/u.test(name.normalize('NFC'))

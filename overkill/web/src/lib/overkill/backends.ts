@@ -35,13 +35,17 @@ function resolveSecret(spec: unknown, what: string, store: SecretStoreCore | nul
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Adapter = any;
 
-export function makeBackends(cfg: { root?: string; backends: BackendCfg[] }, secrets: SecretStoreCore, { nostrPauseMs = 3000 } = {}) {
+export function makeBackends(cfg: { root?: string; backends: BackendCfg[] }, secrets: SecretStoreCore, { nostrPauseMs = 3000, timeouts = null as { host: number; cryptpad: number; nostr: number } | null } = {}) {
 	const ctx = { root: cfg.root ?? DEFAULT_ROOT, home: null, secrets };
 	const list: Adapter[] & { secrets?: SecretStoreCore } = cfg.backends.filter(supported).map((b) => {
-		if (b.type === 'privatebin') return privatebin.create(b, ctx, { browser: true });
-		if (b.type === 'nostr') return nostr.create(b, ctx, { pause: nostrPauseMs });
-		if (b.type === 'cryptpad') return createCryptpad(b, ctx, { loadDrive: () => import('$cli/backends/cryptpad/drive.js'), resolveSecret });
-		return blossom.create(b, ctx);
+		const adapter: Adapter =
+			b.type === 'privatebin' ? privatebin.create(b, ctx, { browser: true })
+			: b.type === 'nostr' ? nostr.create(b, ctx, { pause: nostrPauseMs })
+			: b.type === 'cryptpad' ? createCryptpad(b, ctx, { loadDrive: () => import('$cli/backends/cryptpad/drive.js'), resolveSecret })
+			: blossom.create(b, ctx);
+		// the store gives every call this deadline (store.js `bounded`): one silent host never blocks the rest
+		if (timeouts) adapter.timeoutMs = b.type === 'cryptpad' ? timeouts.cryptpad : b.type === 'nostr' ? timeouts.nostr : timeouts.host;
+		return adapter;
 	});
 	list.secrets = secrets;
 	return list;

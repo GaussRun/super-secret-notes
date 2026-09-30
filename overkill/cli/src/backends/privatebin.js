@@ -33,6 +33,10 @@ export const INSTANCES = [
   'https://paste.coalserver.de'
 ]
 export const DEFAULT_COUNT = 4
+// not a setup fallback: its German "not found" page breaks the missing-paste check
+export const NO_FALLBACK = ['https://paste.coalserver.de']
+// answers reads but refuses posts from a browser page (CORS)
+export const NO_BROWSER = ['https://paste.evolix.org']
 
 const nameFor = (url) => 'pb-' + new URL(url).hostname.replace(/^(www|paste|pb|bin)\./, '').split('.')[0]
 

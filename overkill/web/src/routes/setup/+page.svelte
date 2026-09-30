@@ -3,11 +3,12 @@
 	import SendToPhone from '$lib/components/SendToPhone.svelte';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
-	import { vault } from '$lib/overkill/vault.svelte';
-	import { generatePassphrase, generateVaultName, estimateBits, isStrongEnough, MIN_BITS } from '$lib/overkill/passphrase';
+	import { vault, MIN_COPIES } from '$lib/overkill/vault.svelte';
+	import { generatePassphrase, generateVaultName, generateNoteName, estimateBits, isStrongEnough, MIN_BITS } from '$lib/overkill/passphrase';
 	import { loadHosts, backendConfigs } from '$lib/overkill/settings';
 	import { storeCredential, rememberedName } from '$lib/overkill/credentials';
 	import { page } from '$app/state';
+	import { afterNavigate } from '$app/navigation';
 	import { validVaultName } from '$cli/defaults-core.js';
 	import { to, noteHref } from '$lib/link';
 
@@ -17,7 +18,16 @@
 	// Note first: the vault name and passphrase are made up for you. The name is a plain editable
 	// field; the passphrase is shown read-only until "change passphrase". Both are real inputs
 	// (username / new-password) so password managers see them.
-	let noteName = $state('my first secret');
+	let noteName = $state(generateNoteName());
+	// the note is what this page is for: focus it once SvelteKit has placed focus after the
+	// navigation (an autofocus attribute makes the browser log "Autofocus processing was blocked")
+	let noteBox = $state<HTMLTextAreaElement | null>(null);
+	let navigated = $state(false);
+	afterNavigate(() => (navigated = true));
+	// the form appears once the vault state is known, which can be after the navigation
+	$effect(() => {
+		if (navigated && noteBox) requestAnimationFrame(() => noteBox?.focus());
+	});
 	let noteText = $state('');
 	let name = $state(generateVaultName());
 	const first = generatePassphrase();
@@ -29,7 +39,20 @@
 	let publicMode = $state(quick);
 	let busy = $state(false);
 	let err = $state('');
-	let done = $state<{ vaultName: string; passphrase: string; hosts: { backend: string; ok: boolean }[]; note: string | null; savedToManager: boolean } | null>(null);
+	let done = $state<{
+		vaultName: string;
+		passphrase: string;
+		hosts: { backend: string; ok: boolean; error?: string }[];
+		note: string | null;
+		savedToManager: boolean;
+		swaps: string[];
+		indexLocal: boolean;
+		recordRelays: number | null;
+	} | null>(null);
+	let retrying = $state(false);
+	let retried = $state<{ fixed: string[]; failed: string[] } | null>(null);
+	const stored = $derived(done ? done.hosts.filter((h) => h.ok).length : 0);
+	const failedHosts = $derived(done ? done.hosts.filter((h) => !h.ok) : []);
 	const hosts = loadHosts();
 	const planned = backendConfigs(hosts);
 
@@ -60,7 +83,8 @@
 		e.preventDefault();
 		const skip = (e.submitter as HTMLButtonElement | null)?.name === 'skip';
 		if (!skip && !noteText.trim()) return (err = 'Write something first (or skip and just create the vault).');
-		if (!skip && !noteName.trim()) return (err = 'The note needs a name.');
+		// the name is optional: an empty one gets a made-up name, so notes never collide
+		if (!skip && !noteName.trim()) noteName = generateNoteName();
 		show = false; // a password-type field when the form submits, which is what managers look for
 		err = '';
 		busy = true;
@@ -69,7 +93,7 @@
 			const vaultName = name.normalize('NFC');
 			const res = await vault.create({ name: vaultName, passphrase, generated: passphrase === generated ? generated : null, ephemeral: publicMode, replace: replacing && !publicMode });
 			let note: string | null = null;
-			let results = res;
+			let results: { backend: string; ok: boolean; error?: string }[] = res.hosts;
 			if (!skip) {
 				const put = await vault.put(noteName.trim(), noteText);
 				note = noteName.trim().normalize('NFC');
@@ -77,11 +101,35 @@
 			}
 			// on a public computer the browser must not keep it
 			const savedToManager = publicMode ? false : await storeCredential(vaultName, passphrase);
-			done = { vaultName, passphrase, hosts: results.map((r) => ({ backend: r.backend, ok: r.ok })), note, savedToManager };
+			done = { vaultName, passphrase, hosts: results.map((r) => ({ backend: r.backend, ok: r.ok, error: r.error })), note, savedToManager, swaps: res.swaps, indexLocal: res.indexLocal, recordRelays: res.recordRelays };
 		} catch (x) {
 			err = (x as Error).message;
 		} finally {
 			busy = false;
+		}
+	}
+
+	// copies that failed: check every copy, then repair (the ledger already lists the failures)
+	async function retry() {
+		retrying = true;
+		retried = null;
+		err = '';
+		activity.clear();
+		try {
+			const report = await vault.check();
+			retried = await vault.repair(report);
+			const now = await vault.check();
+			const notes = now.notes as Record<string, { backend: string; status: string; detail?: string }[]>;
+			const noteCopies = done?.note ? notes[done.note] : null;
+			const copies = noteCopies ?? now.vault;
+			if (done) {
+				done.hosts = copies.map((x: { backend: string; status: string; detail?: string }) => ({ backend: x.backend, ok: x.status === 'OK', error: x.detail }));
+				done.indexLocal = !now.index.some((x: { status: string }) => x.status === 'OK');
+			}
+		} catch (x) {
+			err = (x as Error).message;
+		} finally {
+			retrying = false;
 		}
 	}
 
@@ -98,11 +146,33 @@
 		{:else}
 			<p class="ok big">Your vault is on {done.hosts.filter((h) => h.ok).length} of {done.hosts.length} hosts.</p>
 		{/if}
+		{#if failedHosts.length}
+			<p data-testid="stored-summary">Stored on {stored} hosts; {failedHosts.length} failed (will retry).</p>
+		{/if}
+		{#if done.swaps.length}
+			<p class="muted small" data-testid="swaps">Stand-ins for hosts that failed: <span class="id">{done.swaps.join(', ')}</span></p>
+		{/if}
 		<ul class="host-results">
 			{#each done.hosts as h (h.backend)}
-				<li class={h.ok ? 'ok' : 'bad'}><span class="mono">{h.ok ? 'OK' : 'FAILED'}</span> <span class="id">{h.backend}</span></li>
+				<li class={h.ok ? 'ok' : 'bad'}><span class="mono">{h.ok ? 'OK' : 'FAILED'}</span> <span class="id">{h.backend}</span>{#if !h.ok && h.error} <span class="muted small">({h.error})</span>{/if}</li>
 			{/each}
 		</ul>
+		{#if stored < MIN_COPIES}
+			<div class="warn-box" data-testid="few-copies">
+				<p class="warn">Only {stored} copy so far. Everything stays encrypted in this browser; Retry copies it to the hosts that did not answer.</p>
+			</div>
+		{/if}
+		{#if done.indexLocal}
+			<p class="warn" data-testid="index-local">No host that keeps the list of your notes (CryptPad, Nostr) answered: that list stays in this browser for now and is uploaded again with the next save or Retry.</p>
+		{/if}
+		{#if done.recordRelays === 0}
+			<p class="warn" data-testid="no-record">The recovery-by-name record reached no relay yet: keep the kit, and Retry later.</p>
+		{/if}
+		{#if failedHosts.length || done.indexLocal || done.recordRelays === 0}
+			<button type="button" onclick={retry} disabled={retrying} data-testid="retry">{retrying ? 'Retrying...' : 'Retry now'}</button>
+			{#if retried}<p class="small" data-testid="retried">Retry: {retried.fixed.length} repaired, {retried.failed.length} still failing.</p>{/if}
+			{#if err}<p class="error-box" role="alert">{err}</p>{/if}
+		{/if}
 		{#if done.note}<a class="button secondary" href={noteHref(done.note)}>Open the note</a>{/if}
 		<a class="button secondary" href={to('/new/')}>Write another</a>
 	</div>
@@ -139,12 +209,13 @@
 		{/if}
 		<form method="post" action="#" onsubmit={create} data-testid="setup-form">
 			<div class="panel">
-				<label for="note-name">Note name (only you see it; hosts get an HMAC)</label>
-				<input id="note-name" type="text" autocomplete="off" bind:value={noteName} />
 				<label for="note-text">Your secret</label>
-				<!-- the note is what this page is for; SvelteKit keeps focus on [autofocus] after navigating -->
-				<!-- svelte-ignore a11y_autofocus -->
-				<textarea id="note-text" class="big-text" autofocus bind:value={noteText} placeholder="recovery codes, a seed phrase backup hint, the wifi password"></textarea>
+				<textarea id="note-text" class="big-text" bind:this={noteBox} bind:value={noteText} placeholder="recovery codes, a seed phrase backup hint, the wifi password"></textarea>
+				<label for="note-name">Note name (optional; only you see it, hosts get an HMAC)</label>
+				<div class="name-row">
+					<input id="note-name" type="text" autocomplete="off" bind:value={noteName} />
+					<button type="button" class="link" onclick={() => (noteName = generateNoteName())}>roll</button>
+				</div>
 				{#if err}<p class="error-box" role="alert">{err}</p>{/if}
 				<button type="submit" name="scatter" class="primary" disabled={busy || !nameOk || !strong}>{busy ? 'Encrypting and scattering...' : 'Encrypt and scatter'}</button>
 				<button type="submit" name="skip" class="link" disabled={busy || !nameOk || !strong}>Skip, just create the vault</button>
@@ -199,6 +270,8 @@
 	.compact input[readonly] { color: var(--green); border-style: dashed; }
 	@media (max-width: 640px) { .compact .cred { grid-template-columns: 1fr; } }
 	.small-buttons { gap: 2px; }
+	.name-row { display: flex; gap: 6px; align-items: center; }
+	.name-row input { flex: 1; }
 	.hosts, .host-results { padding-left: 18px; }
 	.hosts li, .host-results li { margin: 3px 0; }
 	dl { display: grid; grid-template-columns: 9em 1fr; gap: 6px 10px; }

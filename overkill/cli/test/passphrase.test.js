@@ -47,3 +47,12 @@ test('generated vault names: 4 list words joined by "-", valid, different each t
   }
   assert.equal(names.size, 3000)
 })
+
+test('generated passphrases are always strong enough: six distinct words (a repeat used to fall below 77 bits)', () => {
+  for (let i = 0; i < 20000; i++) {
+    const p = generatePassphrase()
+    const words = p.split(' ')
+    assert.equal(new Set(words).size, 6, p)
+    assert.ok(isStrongEnough(p), `${estimateBits(p)} bits`)
+  }
+})

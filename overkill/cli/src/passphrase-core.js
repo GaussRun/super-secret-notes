@@ -10,13 +10,17 @@ export function passphraseTools (wordlistText) {
   const WORDSET = new Set(WORDS)
   const BITS_PER_WORD = Math.log2(WORDS.length) // 12.92 for 7776 words
 
-  /** `n` uniformly random entries of `list` (rejection sampling, no modulo bias). */
+  /**
+   * `n` distinct, uniformly random entries of `list` (rejection sampling, no modulo bias). Distinct:
+   * a repeated word counts once in the strength estimate, so 6 words with a repeat (about 1 in 500)
+   * came out below MIN_BITS and the generated passphrase was refused.
+   */
   function pick (list, n) {
     const out = []
     const limit = Math.floor(65536 / list.length) * list.length
     while (out.length < n) {
       const [x] = globalThis.crypto.getRandomValues(new Uint16Array(1))
-      if (x < limit) out.push(list[x % list.length])
+      if (x < limit && !out.includes(list[x % list.length])) out.push(list[x % list.length])
     }
     return out
   }

@@ -32,6 +32,13 @@ const { Nacl, Crypto, ChainPad, CPNetflux, Listmap, Netflux, Sortify, Util, Hash
 const PAD_TIMEOUT_MS = deps.padTimeoutMs ?? 30000;
 const log = deps.log ?? (() => {});
 
+// every step that waits on the server gets a deadline, so a silent instance fails with the step's name
+function within(promise, what, ms = PAD_TIMEOUT_MS) {
+  let timer;
+  const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`CryptPad ${what}: no answer in ${Math.round(ms / 1000)} s`)), ms); });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+}
+
 function vendorWriteLoginBlock({ api, blockKeys, content }) {
   Block.setCustomize({ ApiConfig: api });
   return new Promise((resolve, reject) => Block.writeLoginBlock({ pw: true, blockKeys, content },
@@ -59,7 +66,7 @@ function blockUrl(fileHost, blockKeys) {
 }
 
 async function connectNetwork(wsUrl, origin) {
-  return Netflux.connect(wsUrl, (u) => deps.openSocket(u, origin));
+  return within(Netflux.connect(wsUrl, (u) => deps.openSocket(u, origin)), 'websocket connect');
 }
 
 class CryptPadSession {
@@ -89,15 +96,17 @@ class CryptPadSession {
   // Registers a new account the way common-login.js loginOrRegister does for a new user:
   // a fresh drive (random v2 hash, random account keys) plus a login block, written through
   // the /api/auth WRITE_BLOCK command and signed with the password-derived block key.
-  static async register({ origin, user, pass }) {
+  // `absent`: the caller's login attempt just got a 404 for this block, so the existence check
+  // (another 404 in the browser console) is skipped
+  static async register({ origin, user, pass, absent = false }) {
     const api = await fetchApiConfig(origin);
     if (api.restrictRegistration) throw new Error(`${origin} does not allow registration`);
     const app = await fetchAppConfig(origin);
     if (pass.length < app.minimumPasswordLength) throw new Error(`${origin} wants passwords of at least ${app.minimumPasswordLength} characters`);
     const keys = await deriveKeys(user, pass, app.loginSalt);
     const url = blockUrl(api.fileHost || origin, keys.blockKeys);
-    const existing = await fetch(url);
-    if (existing.ok || existing.status === 401) throw Object.assign(new Error('ALREADY_REGISTERED'), { code: 'ALREADY_REGISTERED' });
+    const existing = absent ? null : await fetch(url);
+    if (existing && (existing.ok || existing.status === 401)) throw Object.assign(new Error('ALREADY_REGISTERED'), { code: 'ALREADY_REGISTERED' });
 
     const ed = Nacl.sign.keyPair();
     const curve = Nacl.box.keyPair();
@@ -134,7 +143,7 @@ class CryptPadSession {
 
   #loadUserObject() {
     const secret = this.userSecret;
-    return new Promise((resolve, reject) => {
+    return within(new Promise((resolve, reject) => {
       const rt = Listmap.create({
         network: this.network,
         channel: secret.channel,
@@ -151,24 +160,24 @@ class CryptPadSession {
       rt.proxy.on('ready', () => resolve())
         .on('error', (info) => reject(new Error(`user object: ${info.type} ${info.message}`)))
         .on('disconnect', () => log('user object disconnected'));
-    });
+    }), 'user object load');
   }
 
   get edPublic() { return this.proxy.edPublic; }
 
   // Resolves once the local user-object changes are acknowledged by the server.
   syncDrive() {
-    return new Promise((resolve) => setTimeout(() => Realtime.whenRealtimeSyncs(this.rt.realtime, resolve)));
+    return within(new Promise((resolve) => setTimeout(() => Realtime.whenRealtimeSyncs(this.rt.realtime, resolve))), 'drive sync');
   }
 
   async rpc() {
     if (this._rpc) return this._rpc;
-    this._rpc = await new Promise((resolve, reject) => {
+    this._rpc = await within(new Promise((resolve, reject) => {
       Pinpad.create(this.network, { edPrivate: this.proxy.edPrivate, edPublic: this.proxy.edPublic }, (e, call) => {
         if (e) return reject(new Error(`rpc: ${e}`));
         resolve(call);
       });
-    });
+    }), 'rpc');
     return this._rpc;
   }
 

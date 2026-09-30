@@ -2,7 +2,8 @@
 // bootstrap.js, discovery-core.js, kit.js, status.js); this file only wires it to IndexedDB and
 // the page. Keys, the passphrase and plaintext live in memory only.
 import * as c from '$cli/crypto.js';
-import { Overkill } from '$cli/store.js';
+import { Overkill, MIN_COPIES } from '$cli/store.js';
+import { fallbackPicker } from '$cli/fallbacks.js';
 import * as bootstrap from '$cli/bootstrap.js';
 import { bootstrapRecord, recordHash, publishDue, configFromBootstrap } from '$cli/discovery-core.js';
 import { SecretStoreCore, migrateConfig, SECRETS_ID } from '$cli/vaultsecrets-core.js';
@@ -136,9 +137,10 @@ class VaultState {
 	}
 
 	#makeStore(cfg: VaultCfg, keys: Keys, vaultBytes: Uint8Array) {
-		const backends = makeBackends(cfg, this.#secrets!, { nostrPauseMs: loadHosts().nostrPauseMs });
+		const hosts = loadHosts();
+		const backends = makeBackends(cfg, this.#secrets!, { nostrPauseMs: hosts.nostrPauseMs, timeouts: hosts.timeouts });
 		if (!backends.length) throw new Error('none of this vault\'s backends works from a browser (PrivateBin, CryptPad, Nostr and Blossom do); use the CLI');
-		return new Overkill({ backends, keys, vaultBytes, logger, indexCache: blobIo(FILES.indexCache), indexSync: cfg.index_sync ?? 'always' });
+		return new Overkill({ backends, keys, vaultBytes, logger, indexCache: blobIo(FILES.indexCache), indexSync: cfg.index_sync ?? 'always', hostTimeoutMs: hosts.timeouts.host });
 	}
 
 	/**
@@ -222,12 +224,31 @@ class VaultState {
 		await this.#saveConfig();
 		await this.#open({ vault, keys, passphrase, vaultBytes, conf });
 		const store = this.store;
-		const res = await step(`uploading vault.age to ${store.backends.length} hosts`, () => store.uploadVault(), (r) => `vault.age on ${r.filter((x) => x.ok).length}/${r.length} hosts`);
-		if (!res.some((r) => r.ok)) throw new Error('vault.age could not be stored anywhere; check your connection and the hosts in Settings');
-		await step('writing the empty index', async () => store.writeIndex(await store.mergedIndex()));
-		await this.publishDiscovery({ force: true });
+		// best effort: every host on its own deadline; a default that fails gets a known-good stand-in
+		const hosts = loadHosts();
+		const picker = fallbackPicker(cfg, {
+			lists: hosts.fallbacks,
+			make: (bc: BackendCfg) => makeBackends({ root: cfg.root, backends: [bc] }, this.#secrets!, { nostrPauseMs: hosts.nostrPauseMs, timeouts: hosts.timeouts })[0]
+		});
+		const res = await step(`uploading vault.age to ${store.backends.length} hosts`, () => store.uploadVault({ next: (b: Adapter) => picker.next(b) }), (r) => `vault.age on ${r.filter((x) => x.ok).length}/${r.length} hosts`);
+		if (!res.some((r) => r.ok)) throw new Error('vault.age could not be stored anywhere; check your connection and the hosts in Settings, then try again');
+		const swaps = picker.apply(res);
+		if (swaps.length) {
+			conf.cfg = cfg;
+			this.cfg = { ...cfg };
+			await this.#saveConfig();
+		}
+		// a new vault's index is empty: no need to read one; if no index holder takes it, it stays here
+		const indexRes = await step('writing the empty index', () => store.writeIndex(c.emptyIndex()), (r) => `index on ${r.filter((x: { ok: boolean }) => x.ok).length}/${r.length} hosts`);
+		const record = await this.publishDiscovery({ force: true });
 		this.generated = generated;
-		return res.map((r: { backend: Adapter; ok: boolean; error?: unknown }) => ({ backend: r.backend.name as string, ok: r.ok, error: (r.error as Error | undefined)?.message }));
+		return {
+			hosts: res.map((r: { backend: Adapter; ok: boolean; error?: unknown; replaced?: string }) => ({ backend: r.backend.name as string, ok: r.ok, error: (r.error as Error | undefined)?.message, replaced: r.replaced })),
+			swaps,
+			indexLocal: store.remoteIndex && !indexRes.some((r: { ok: boolean }) => r.ok),
+			// null: no relays configured for the record at all
+			recordRelays: hosts.discovery.length ? (record ? record.filter((x: { ok: boolean }) => x.ok).length : 0) : null
+		};
 	}
 
 	/** Name + passphrase only: the recovery record on the relays, then vault.age, then everything. */
@@ -424,6 +445,8 @@ class VaultState {
 		this.status = 'none';
 	}
 }
+
+export { MIN_COPIES };
 
 const step = <T>(message: string, fn: () => Promise<T>, done?: (v: T) => string) => activity.step(message, fn, done);
 

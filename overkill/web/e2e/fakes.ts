@@ -36,15 +36,22 @@ export interface FakePrivatebin {
 	url: string;
 	pastes: Map<string, { adata: unknown; ct: string; deletetoken: string }>;
 	requests: string[];
+	/** true: every request fails (503, no CORS header), like an instance that is down */
+	down: boolean;
 	close(): Promise<void>;
 }
 
 export async function startFakePrivatebin(): Promise<FakePrivatebin> {
 	const pastes: FakePrivatebin['pastes'] = new Map();
 	const requests: string[] = [];
+	const state = { down: false };
 	const server = http.createServer(async (req, res) => {
 		const raw = await body(req);
 		requests.push(`${req.method} ${req.url}`);
+		if (state.down) {
+			res.statusCode = 503;
+			return res.end('down');
+		}
 		const json = req.headers['x-requested-with'] === 'JSONHttpRequest' || /application\/json/.test(req.headers.accept ?? '');
 		if (req.method === 'OPTIONS' || !json) {
 			res.setHeader('Content-Type', 'text/html');
@@ -80,7 +87,18 @@ export async function startFakePrivatebin(): Promise<FakePrivatebin> {
 		return send({ status: 0, id, v: 2, adata: p.adata, ct: p.ct, meta: {} });
 	});
 	const url = await listen(server);
-	return { url, pastes, requests, close: () => close(server) };
+	return {
+		url,
+		pastes,
+		requests,
+		get down() {
+			return state.down;
+		},
+		set down(v: boolean) {
+			state.down = v;
+		},
+		close: () => close(server)
+	};
 }
 
 export interface FakeBlossom {
@@ -228,7 +246,9 @@ export async function startAllFakes() {
 		blossom: blossom.map((x) => x.url),
 		cryptpad: cryptpad.map((x) => x.url),
 		discovery: relays.map((x) => x.url),
-		nostrPauseMs: 0
+		nostrPauseMs: 0,
+		// never the real hosts in tests
+		fallbacks: { privatebin: [] as string[], nostr: [] as string[], cryptpad: [] as string[], blossom: [] as string[] }
 	};
 	return {
 		pb,

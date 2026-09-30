@@ -28,6 +28,7 @@ test('a second vault while one is stored and locked; notes stay apart; the first
 	await name1.fill('vault one');
 	const pass1 = await page.getByLabel('Passphrase', { exact: true }).inputValue();
 	await page.getByLabel('Your secret').fill('first vault secret');
+	await page.getByLabel(/^Note name/).fill('my first secret');
 	await page.getByRole('button', { name: 'Encrypt and scatter' }).click();
 	await expect(page.getByTestId('setup-done')).toContainText('"my first secret" is on', { timeout: 90_000 });
 
