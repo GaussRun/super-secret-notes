@@ -133,3 +133,14 @@ test('parseKit: a kit printed by the old `overkill` command still parses', () =>
   assert.deepEqual(cfg.backends.map((b) => b.name), ['pb-envs', 'nostr-nos'])
   assert.equal(cfg.backends[0].locators['vault.age'], 'https://pb.envs.net/?0123456789abcdef#3xampleKey')
 })
+
+test('the kit prints the vault link: the recover page with only the vault name, no passphrase', async () => {
+  const { recoveryKit, vaultLink } = await import('../src/kit.js')
+  const vault = await (await import('../src/crypto.js')).createVault()
+  const kit = await recoveryKit({ vault, cfg: { name: 'Oma Rezepte', backends: [] }, backends: [], generated: 'alpha beta gamma delta epsilon zeta' })
+  assert.match(kit, /vault link: {3}https:\/\/gaussrun\.github\.io\/super-secret-notes\/recover\/#v=Oma%20Rezepte$/m)
+  const line = /vault link: +(\S+)/.exec(kit)[1]
+  assert.ok(!line.includes('p='))
+  assert.ok(!line.includes('alpha'))
+  assert.equal(vaultLink('x', 'http://127.0.0.1:1/'), 'http://127.0.0.1:1/recover/#v=x')
+})

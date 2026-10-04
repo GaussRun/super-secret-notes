@@ -40,7 +40,9 @@ test('the kit downloads itself when the vault is made, with the name, the passph
 	expect(text).toContain('vault name:   kit vault');
 	expect(text).toContain(`passphrase:   ${passphrase}`);
 	expect(text).toContain(`access link:  ${link}`);
-	expect(text).toContain('anyone with it can open your vault'.replace('anyone', 'Anyone'));
+	expect(text).toContain(`vault link:   ${ORIGIN}${url('/recover/')}#v=${encodeURIComponent('kit vault')}`);
+	expect(text).toContain('It contains your passphrase');
+	expect(text).toContain('anyone with it can open your');
 	// the command line tool's recover --kit reads the same file
 	const kit = parseKit(text);
 	expect(kit.vault.age_identity).toMatch(/^AGE-SECRET-KEY-1/);
@@ -52,8 +54,11 @@ test('the kit downloads itself when the vault is made, with the name, the passph
 	const again = page.waitForEvent('download');
 	await page.getByTestId('download-kit').click();
 	expect((await again).suggestedFilename()).toBe('super-secret-notes-recovery-kit-kit vault.txt');
+	// the result screen's copy button gives the vault link (no passphrase)
 	await page.getByTestId('copy-recovery-link').click();
-	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+	const vaultLink = `${ORIGIN}${url('/recover/')}#v=${encodeURIComponent('kit vault')}`;
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(vaultLink);
+	await expect(page.getByTestId('done-vault-link')).toContainText(vaultLink);
 	// the login form stays in the page (hidden), for the browser's password-save prompt
 	await expect(page.getByTestId('setup-form')).toHaveCount(1);
 	await expect(page.getByTestId('setup-form')).toBeHidden();

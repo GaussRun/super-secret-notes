@@ -1,7 +1,7 @@
 // One paste to get into a vault: whatever the user copied (the access link, its fragment, the
 // recovery kit file, the plain text of the QR, a small JSON, or name and passphrase on two lines)
 // becomes the vault name and passphrase. Nothing here logs or sends anything.
-import { parseHandoff } from './qr';
+import { parseHandoff, parseVaultName } from './qr';
 import { validVaultName } from '$cli/defaults-core.js';
 
 export interface Access {
@@ -54,3 +54,18 @@ export function parseAccess(input: string): Access | null {
 
 /** True when `value` looks like more than a vault name (a link, a kit, JSON), so a name field should split it. */
 export const looksLikeAccess = (value: string) => /#v=|^v=.+&p=|\n|^\s*\{/.test(value);
+
+/** What a paste gives: the full access, or (from a vault link) only the vault name. */
+export type PastedAccess = Access | { name: string; passphrase?: undefined };
+
+/** Like parseAccess, but a vault link ("#v=<name>" without p=) gives just the name. */
+export function parsePasted(input: string): PastedAccess | null {
+	const full = parseAccess(input);
+	if (full) return full;
+	const text = (input ?? '').trim();
+	if (text.includes('\n')) return null;
+	const hashAt = text.indexOf('#');
+	const frag = hashAt >= 0 ? text.slice(hashAt) : /^v=[^&]+$/.test(text) ? text : null;
+	const name = frag ? parseVaultName(frag)?.trim() : null;
+	return name && validVaultName(name) ? { name: name.normalize('NFC') } : null;
+}

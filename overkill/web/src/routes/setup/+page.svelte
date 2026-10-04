@@ -88,7 +88,7 @@
 	}
 	async function copyAccess() {
 		try {
-			await navigator.clipboard.writeText(vault.handoff(new URL(to('/recover/'), location.href).href));
+			await navigator.clipboard.writeText(vault.vaultLink(new URL(to('/recover/'), location.href).href));
 			accessCopied = true;
 		} catch {
 			err = 'this browser would not copy; use Share this vault below';
@@ -241,12 +241,14 @@
 		<p>They are all you need to get your notes back, on any device. Also keep the kit.</p>
 		<div class="row">
 			<button type="button" onclick={saveKit} data-testid="download-kit">{kitDownloaded ? 'Download recovery kit again' : 'Download recovery kit'}</button>
-			<button type="button" class="secondary" onclick={copyAccess} data-testid="copy-recovery-link">{accessCopied ? 'Copied' : 'Copy recovery link'}</button>
+			<button type="button" class="secondary" onclick={copyAccess} data-testid="copy-recovery-link">{accessCopied ? 'Copied' : 'Copy vault link'}</button>
 		</div>
 		{#if kitDownloaded}<p class="muted small" data-testid="kit-downloaded">The recovery kit went to your downloads. Move it somewhere safe and offline.</p>{/if}
 		<dl>
 			<dt>Vault name</dt>
 			<dd class="id" data-testid="done-name">{done.vaultName}</dd>
+			<dt>Vault link</dt>
+			<dd class="id" data-testid="done-vault-link">{vault.cfg?.name ? vault.vaultLink(new URL(to('/recover/'), location.href).href) : ''} <span class="muted small">(safe to keep: it opens nothing without the passphrase)</span></dd>
 			<dt>Passphrase</dt>
 			<dd class="id mono">{show ? done.passphrase : '(hidden: press Show)'}</dd>
 		</dl>

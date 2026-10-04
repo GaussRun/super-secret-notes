@@ -63,8 +63,21 @@ test('Copy access link copies the recover URL with the fragment; the share sheet
 	await expect(page.getByTestId('setup-done')).toBeVisible({ timeout: 90_000 });
 
 	const share = page.getByTestId('share-vault');
-	await expect(share.getByTestId('share-warning')).toHaveText('Anyone with this link can open the whole vault: all notes, and can change them. Send it only through an end-to-end encrypted chat (e.g. Signal), or to yourself.');
+	await expect(share.getByTestId('share-warning')).toHaveText('Anyone with the link WITH passphrase can open the whole vault: all notes, and can change them. Send it only through an end-to-end encrypted chat (e.g. Signal), or to yourself.');
 	await expect(share.getByTestId('share-sheet')).toHaveCount(0); // no navigator.share here
+	await expect(share.getByTestId('share-vault-link')).toHaveCount(0);
+	// the vault link comes first and is the primary button; it carries no passphrase
+	const buttons = share.getByRole('button');
+	await expect(buttons.first()).toHaveText('Copy vault link');
+	await expect(buttons.first()).not.toHaveClass(/\bsecondary\b/);
+	await expect(share.getByTestId('copy-access-link')).toHaveText('Copy link WITH passphrase');
+	await expect(share.getByTestId('copy-access-link')).toHaveClass(/\bsecondary\b/);
+	await expect(share.getByTestId('vault-link-safe')).toHaveText('Safe to keep in notes or bookmarks: it cannot open anything without your passphrase.');
+	await share.getByTestId('copy-vault-link').click();
+	const vaultLink = await page.evaluate(() => navigator.clipboard.readText());
+	expect(vaultLink).toBe(`${ORIGIN}${url('/recover/')}#v=${encodeURIComponent(name)}`);
+	expect(vaultLink).not.toContain('p=');
+	expect(vaultLink).not.toContain(encodeURIComponent(passphrase));
 	await share.getByTestId('copy-access-link').click();
 	await expect(share.getByTestId('copy-access-link')).toHaveText('Copied');
 	link = await page.evaluate(() => navigator.clipboard.readText());
@@ -93,8 +106,10 @@ test('where the browser has a share sheet, Share... hands it the access link', a
 	await expect(page.getByTestId('recovered')).toBeVisible({ timeout: 90_000 });
 	await nav(page, 'Notes');
 	await page.getByRole('button', { name: 'Share this vault' }).click();
+	await page.getByTestId('share-vault-link').click();
 	await page.getByTestId('share-sheet').click();
-	expect(await page.evaluate(() => (window as unknown as { __shared: ShareData[] }).__shared)).toEqual([{ url: link }]);
+	const vaultLink = link.replace(/&p=.*$/, '');
+	expect(await page.evaluate(() => (window as unknown as { __shared: ShareData[] }).__shared)).toEqual([{ url: vaultLink }, { url: link }]);
 	await ctx.close();
 });
 
@@ -135,7 +150,7 @@ test('garbage gets a hint; a link pasted into the name field splits itself', asy
 	const page = await ctx.newPage();
 	await page.goto(url('/recover/'));
 	await page.getByLabel('Paste your access link or recovery kit').fill('this is not a link');
-	await expect(page.getByTestId('access-paste-hint')).toContainText('not an access link');
+	await expect(page.getByTestId('access-paste-hint')).toContainText('not a vault link, an access link or a recovery kit');
 	await expect(page.getByLabel('Vault name')).toHaveValue('');
 	await page.getByLabel('Vault name').fill(link);
 	await expect(page.getByLabel('Vault name')).toHaveValue(name);
@@ -162,5 +177,47 @@ test('the unlock form takes the access link too, and refuses one for another vau
 	await form.getByRole('button', { name: 'Unlock' }).click();
 	await expect(page).toHaveURL(url('/notes/'), { timeout: 60_000 });
 	await expect(page.getByTestId('notes-table')).toContainText('the note');
+	await ctx.close();
+});
+
+test('a vault link (no passphrase) opens /recover/ with the name filled in; the passphrase recovers', async ({ browser }) => {
+	const ctx = await browser.newContext();
+	await useFakes(ctx, fakes);
+	const urls = recordRequests(ctx);
+	const page = await ctx.newPage();
+	const errors = watchErrors(page);
+	const vaultLink = link.replace(/&p=.*$/, '');
+	expect(vaultLink).toMatch(/#v=[^&]+$/);
+	await page.goto(vaultLink);
+	await expect(page.getByTestId('vault-link-ready')).toContainText(`Recover ${name}`);
+	await expect(page.getByLabel('Vault name')).toHaveValue(name);
+	const pass = page.getByLabel('Passphrase', { exact: true });
+	await expect(pass).toBeFocused();
+	await expect(pass).toHaveAttribute('autocomplete', 'current-password');
+	await expect(pass).toHaveValue('');
+	// the fragment is wiped from the address bar
+	expect(await page.evaluate(() => location.hash)).toBe('');
+	await pass.fill(passphrase);
+	await page.getByRole('button', { name: 'Recover' }).click();
+	await expect(page.getByTestId('recovered')).toBeVisible({ timeout: 90_000 });
+	noLeak(urls);
+	for (const u of urls) expect(u).not.toContain('#v=');
+	expect(errors).toEqual([]);
+	await ctx.close();
+});
+
+test('the paste field takes a vault link: the name is filled, the passphrase is asked for', async ({ browser }) => {
+	const ctx = await browser.newContext();
+	await useFakes(ctx, fakes);
+	const page = await ctx.newPage();
+	await page.goto(url('/recover/'));
+	await page.getByLabel('Paste your access link or recovery kit').fill(link.replace(/&p=.*$/, ''));
+	await expect(page.getByLabel('Vault name')).toHaveValue(name);
+	await expect(page.getByLabel('Passphrase', { exact: true })).toHaveValue('');
+	await expect(page.getByLabel('Passphrase', { exact: true })).toBeFocused();
+	await expect(page.getByTestId('access-paste-hint')).toHaveCount(0);
+	await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+	await page.getByRole('button', { name: 'Recover' }).click();
+	await expect(page.getByTestId('recovered')).toBeVisible({ timeout: 90_000 });
 	await ctx.close();
 });

@@ -14,11 +14,12 @@ import { identity } from '$cli/backends/nostr.js';
 import { logger } from './shims/log.js';
 import { activity } from './activity.svelte';
 import { FILES, readBlob, writeBlob, clearAll, clearStored, blobIo, goEphemeral, endEphemeral, saveBackup, readBackup, dropBackup, type VaultBackup } from './idb';
-import { handoffLink, plainText } from './qr';
+import { handoffLink, plainText, vaultLinkFor } from './qr';
 import { loadHosts, planHosts, type BackendCfg, type Hosts } from './settings';
 import { makeBackends, supported, TRAVELS_WITH_SECRETS, type Adapter } from './backends';
 import { isStrongEnough, estimateBits, MIN_BITS } from './passphrase';
 import { rememberName, rememberedName } from './credentials';
+import { to } from '$lib/link';
 
 export interface VaultCfg {
 	v: 1;
@@ -324,11 +325,15 @@ class VaultState {
 		return [
 			'SUPER SECRET NOTES  -  VAULT ACCESS AND RECOVERY KIT',
 			'',
-			'Store this somewhere safe and offline. Anyone with it can open your vault: all notes, and change them.',
+			'Store this somewhere safe and offline. It contains your passphrase: anyone with it can open your',
+			'vault (all notes, and change them). It is the backstop if the passphrase is lost.',
 			'',
 			`vault name:   ${name}`,
 			`passphrase:   ${this.#pass}`,
+			`vault link:   ${this.vaultLink(recoverUrl)}`,
+			'              (safe to keep in notes or bookmarks: it opens nothing without the passphrase)',
 			`access link:  ${this.handoff(recoverUrl)}`,
+			'              (the link WITH the passphrase: as secret as this file)',
 			'',
 			'To open the vault on another device: open the access link, or paste this whole file into',
 			'"Paste your access link or recovery kit" on the Recover page.',
@@ -337,6 +342,11 @@ class VaultState {
 			await this.kit(),
 			''
 		].join('\n');
+	}
+
+	/** The vault link: only the name, safe to keep in notes or bookmarks. */
+	vaultLink(recoverUrl: string) {
+		return vaultLinkFor(recoverUrl, this.cfg!.name!);
 	}
 
 	/** The vault name and passphrase as text, for a password manager or notes app. */
@@ -469,7 +479,9 @@ class VaultState {
 			where: b.type === 'cryptpad' ? `${b.origin} drive:/${this.cfg!.root ?? DEFAULT_ROOT}` : String(b.url ?? b.origin ?? b.path ?? '(set up in the CLI)'),
 			...(b.type === 'cryptpad' && b.derived ? { accountName: async () => (await c.deriveCryptpadCredentials(keys.master, new URL(String(b.origin)).host)).username } : {})
 		}));
-		return recoveryKit({ vault: this.#vault, cfg: this.cfg, backends: all, generated: this.generated });
+		// the vault link points at this copy of the web app
+		const site = new URL(to('/'), location.href).href;
+		return recoveryKit({ vault: this.#vault, cfg: this.cfg, backends: all, generated: this.generated, site });
 	}
 
 	async lock() {

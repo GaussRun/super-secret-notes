@@ -4,6 +4,17 @@
 import { paths } from './crypto.js'
 import { DEFAULT_ROOT } from './defaults-core.js'
 
+// Where the web app lives (its /recover/ page takes a vault link); OVERKILL_SITE_URL for another copy
+export const DEFAULT_SITE_URL = 'https://gaussrun.github.io/super-secret-notes'
+
+/**
+ * The vault link: the recover page with only the vault name in the fragment. It opens nothing
+ * without the passphrase, so it is safe to keep in notes or bookmarks.
+ */
+export function vaultLink (name, site = (globalThis.process?.env?.OVERKILL_SITE_URL || DEFAULT_SITE_URL)) {
+  return `${site.replace(/\/+$/, '')}/recover/#v=${encodeURIComponent(name)}`
+}
+
 const field = (lines, label) => lines.find((l) => l.startsWith(label))?.slice(label.length).trim()
 
 /** Kit text (as printed, with or without its "| " frame) -> what can be restored. */
@@ -67,7 +78,8 @@ function restoreBackend (name, type, where, root, derived) {
 }
 
 /** The printed recovery kit (shared with the web client, which must print the same sheet). */
-export async function recoveryKit ({ vault, cfg, backends, generated }) {
+/** `site`: the web app's address for the vault link (default DEFAULT_SITE_URL or OVERKILL_SITE_URL). */
+export async function recoveryKit ({ vault, cfg, backends, generated, site = /** @type {string | undefined} */ (undefined) }) {
   const accounts = []
   for (const b of backends.filter((x) => x.accountName)) {
     const name = await b.accountName().catch(() => null)
@@ -98,7 +110,7 @@ export async function recoveryKit ({ vault, cfg, backends, generated }) {
     `  master (b64): ${vault.master}`,
     ...(generated ? ['', `  passphrase:   ${generated}`] : []),
     '',
-    ...(cfg.name ? [`  vault name:   ${cfg.name}`] : []),
+    ...(cfg.name ? [`  vault name:   ${cfg.name}`, `  vault link:   ${vaultLink(cfg.name, site)}`, '                (safe to keep: it opens nothing without the passphrase)'] : []),
     `  created:      ${vault.created}`,
     `  root folder:  ${cfg.root ?? DEFAULT_ROOT}`,
     '  backends:',

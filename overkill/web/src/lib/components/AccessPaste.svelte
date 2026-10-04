@@ -2,16 +2,17 @@
 	// One paste instead of two copies: the access link, its #fragment, the recovery kit file, the
 	// QR's plain text, {"vault": ..., "passphrase": ...} or name and passphrase on two lines.
 	// The passphrase only goes into the form (memory); nothing is stored, sent or logged here.
-	import { parseAccess, type Access } from '$lib/overkill/access';
+	import { parsePasted, type PastedAccess } from '$lib/overkill/access';
 
-	let { onaccess }: { onaccess: (a: Access) => void } = $props();
+	// a vault link gives only the name: the passphrase is asked for next
+	let { onaccess }: { onaccess: (a: PastedAccess) => void } = $props();
 	let value = $state('');
 	let hint = $state('');
 
 	function take() {
-		const a = parseAccess(value);
+		const a = parsePasted(value);
 		if (!value.trim()) return void (hint = '');
-		if (!a) return void (hint = 'That is not an access link or a recovery kit. Paste the whole link (with the part after #) or the kit file, or type the name and passphrase below.');
+		if (!a) return void (hint = 'That is not a vault link, an access link or a recovery kit. Paste the whole link (with the part after #) or the kit file, or type the name and passphrase below.');
 		hint = '';
 		value = ''; // the passphrase does not stay in this box
 		onaccess(a);

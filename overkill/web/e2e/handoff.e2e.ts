@@ -90,7 +90,7 @@ test('public computer: quick throwaway vault, nothing stored, a note, the QR car
 
 	await nav(page, 'Kit');
 	await expect(page.getByTestId('qr')).toHaveCount(0); // hidden until asked for
-	await page.getByRole('button', { name: 'Show QR (recovery link)' }).click();
+	await page.getByRole('button', { name: 'Show QR (link with passphrase)' }).click();
 	await expect(page.getByTestId('qr-warning')).toContainText('ANYONE WHO SEES THIS QR CAN OPEN YOUR VAULT');
 	link = await scanQr(page);
 	expect(link.startsWith(`${ORIGIN}${url('/recover/')}#v=`)).toBe(true);
@@ -112,7 +112,7 @@ test('the QR hides itself after 60 seconds', async () => {
 	await page.getByRole('button', { name: 'Share this vault' }).click();
 	// fake timers from here on: the QR's countdown is the only timer the test drives
 	await page.clock.install();
-	await page.getByRole('button', { name: 'Show QR (recovery link)' }).click();
+	await page.getByRole('button', { name: 'Show QR (link with passphrase)' }).click();
 	await expect(page.getByTestId('qr')).toBeVisible();
 	await page.clock.runFor(30_000);
 	await expect(page.getByTestId('qr-countdown')).toContainText('Hides itself in 30 s');

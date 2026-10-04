@@ -11,6 +11,19 @@ export function handoffLink(recoverUrl: string, vaultName: string, passphrase: s
 	return u.href;
 }
 
+/** <recover page URL>#v=<vault name>: the vault link, which opens nothing without the passphrase. */
+export function vaultLinkFor(recoverUrl: string, vaultName: string) {
+	const u = new URL(recoverUrl);
+	u.hash = `v=${encodeURIComponent(vaultName)}`;
+	return u.href;
+}
+
+/** The vault name from a vault link's fragment ("#v=..." without p=), or null. */
+export function parseVaultName(hash: string): string | null {
+	const params = new URLSearchParams(hash.replace(/^#/, ''));
+	return params.get('v') && !params.get('p') ? params.get('v') : null;
+}
+
 /** The vault name and passphrase from a handoff fragment ("#v=...&p=..."), or null. */
 export function parseHandoff(hash: string): { name: string; passphrase: string } | null {
 	const params = new URLSearchParams(hash.replace(/^#/, ''));

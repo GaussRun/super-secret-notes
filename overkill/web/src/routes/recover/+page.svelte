@@ -1,15 +1,16 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, afterNavigate } from '$app/navigation';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { loadHosts } from '$lib/overkill/settings';
 	import { to } from '$lib/link';
 	import { storeCredential, rememberedName } from '$lib/overkill/credentials';
-	import { parseHandoff } from '$lib/overkill/qr';
+	import { parseHandoff, parseVaultName } from '$lib/overkill/qr';
+	import { tick } from 'svelte';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
 	import AccessPaste from '$lib/components/AccessPaste.svelte';
-	import { parseAccess, looksLikeAccess, type Access } from '$lib/overkill/access';
+	import { parsePasted, looksLikeAccess, type PastedAccess } from '$lib/overkill/access';
 
 	let name = $state('');
 	let passphrase = $state('');
@@ -27,6 +28,8 @@
 	// the fragment from the address bar and this history entry right away (SvelteKit's own
 	// history state is passed through unchanged). The fragment never reaches a server anyway.
 	const handoff = parseHandoff(location.hash);
+	// a vault link: only the name; the passphrase comes from the user (or their password manager)
+	const linkedName = handoff ? null : parseVaultName(location.hash);
 	if (location.hash) {
 		try {
 			history.replaceState(history.state, '', location.pathname + location.search);
@@ -39,18 +42,39 @@
 		passphrase = handoff.passphrase;
 		fromLink = true;
 	}
+	let askPass = $state<string | null>(null);
+	let passField = $state<HTMLInputElement | null>(null);
+	async function askForPassphrase(vaultName: string) {
+		name = vaultName;
+		passphrase = '';
+		askPass = vaultName;
+		await tick();
+		passField?.focus();
+	}
+	// after SvelteKit has placed focus for the navigation: then the passphrase field gets it
+	let linkUsed = false;
+	let navigated = $state(false);
+	afterNavigate(() => (navigated = true));
+	$effect(() => {
+		if (linkedName && passField && navigated && !linkUsed) {
+			linkUsed = true;
+			requestAnimationFrame(() => void askForPassphrase(linkedName));
+		}
+	});
 
 	// one paste: both fields filled, one click to recover
 	let pasted = $state(false);
-	function take(a: Access) {
+	function take(a: PastedAccess) {
+		if (a.passphrase === undefined) return void askForPassphrase(a.name);
 		name = a.name;
 		passphrase = a.passphrase;
+		askPass = null;
 		pasted = true;
 	}
 	// a link or kit pasted into the name field splits itself
 	function nameInput() {
 		if (!looksLikeAccess(name)) return;
-		const a = parseAccess(name);
+		const a = parsePasted(name);
 		if (a) take(a);
 	}
 
@@ -96,6 +120,9 @@
 	{/if}
 	<form class="panel" method="post" action="#" onsubmit={recover} data-testid="recover-form">
 		<AccessPaste onaccess={take} />
+		{#if askPass}
+			<p class="ok" data-testid="vault-link-ready"><strong>Recover {askPass}:</strong> enter its passphrase (your password manager may fill it), then press Recover.</p>
+		{/if}
 		{#if pasted && !fromLink}
 			<p class="ok" data-testid="paste-ready"><strong>Recover {name}?</strong> Press Recover.</p>
 		{/if}
@@ -106,7 +133,7 @@
 		<label for="rec-name">Vault name</label>
 		<input id="rec-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required bind:value={name} oninput={nameInput} />
 		<label for="rec-pass">Passphrase</label>
-		<input id="rec-pass" name="password" type="password" autocomplete="current-password" required bind:value={passphrase} />
+		<input id="rec-pass" name="password" type="password" autocomplete="current-password" required bind:value={passphrase} bind:this={passField} />
 		<PublicComputer bind:checked={publicMode} />
 		{#if err}<p class="error-box" role="alert">{err}</p>{/if}
 		<button type="submit" disabled={busy || !name.trim() || !passphrase}>{busy ? 'Searching the relays...' : 'Recover'}</button>

@@ -1,7 +1,7 @@
 // One paste into /recover/ or the unlock form: every format people copy gives the name and passphrase.
 import { describe, expect, test } from 'vitest';
-import { parseAccess, looksLikeAccess } from './access';
-import { handoffLink, plainText } from './qr';
+import { parseAccess, looksLikeAccess, parsePasted } from './access';
+import { handoffLink, plainText, vaultLinkFor } from './qr';
 
 const NAME = 'velvet-otter-harbor-lantern';
 const PASS = 'correct horse battery staple jump over';
@@ -36,5 +36,18 @@ describe('parseAccess', () => {
 		expect(looksLikeAccess(NAME)).toBe(false);
 		expect(looksLikeAccess(link)).toBe(true);
 		expect(looksLikeAccess(`${NAME}\n${PASS}`)).toBe(true);
+	});
+});
+
+describe('parsePasted', () => {
+	test('a vault link gives only the name', () => {
+		const vl = vaultLinkFor('https://gaussrun.github.io/super-secret-notes/recover/', NAME);
+		expect(vl).not.toContain('p=');
+		expect(parsePasted(vl)).toEqual({ name: NAME });
+		expect(parsePasted(`#v=${NAME}`)).toEqual({ name: NAME });
+		expect(parseAccess(vl)).toBeNull();
+	});
+	test('the full access still gives both', () => {
+		expect(parsePasted(handoffLink('https://x.example/recover/', NAME, PASS))).toEqual({ name: NAME, passphrase: PASS });
 	});
 });

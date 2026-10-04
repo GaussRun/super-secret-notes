@@ -6,7 +6,8 @@
 	import { rememberedName, savedCredential } from '$lib/overkill/credentials';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
 	import AccessPaste from '$lib/components/AccessPaste.svelte';
-	import type { Access } from '$lib/overkill/access';
+	import type { PastedAccess } from '$lib/overkill/access';
+	import { tick } from 'svelte';
 	let { children } = $props();
 
 	// the username the password manager pairs the passphrase with
@@ -29,7 +30,8 @@
 	let err = $state('');
 
 	// a pasted access link or kit: the passphrase goes into the field (for this vault only)
-	function take(a: Access) {
+	let passField = $state<HTMLInputElement | null>(null);
+	async function take(a: PastedAccess) {
 		const held = rememberedName();
 		if (held && a.name !== held) {
 			err = `That is the access for "${a.name}"; this browser holds "${held}". Use "Recover a different vault" for it.`;
@@ -37,6 +39,11 @@
 		}
 		err = '';
 		name = a.name;
+		if (a.passphrase === undefined) {
+			// a vault link: the passphrase is still needed
+			await tick();
+			return void passField?.focus();
+		}
 		passphrase = a.passphrase;
 	}
 
@@ -66,7 +73,7 @@
 		<!-- a normal field (not readonly): password managers skip read-only fields when filling -->
 		<input id="unlock-name" name="username" type="text" autocomplete="username" bind:value={name} />
 		<label for="unlock-pass">Passphrase</label>
-		<input id="unlock-pass" name="password" type="password" autocomplete="current-password" required bind:value={passphrase} />
+		<input id="unlock-pass" name="password" type="password" autocomplete="current-password" required bind:value={passphrase} bind:this={passField} />
 		<PublicComputer bind:checked={publicMode} />
 		{#if err}<p class="error-box" role="alert">{err}</p>{/if}
 		<button type="submit" disabled={busy || !passphrase}>{busy ? 'Running scrypt...' : 'Unlock'}</button>
