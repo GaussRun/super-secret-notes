@@ -5,7 +5,7 @@
 // the main npub). Whoever knows name + passphrase finds both; the passphrase then opens vault.age.
 import { getPublicKey } from 'nostr-tools/pure'
 import { npubEncode } from 'nostr-tools/nip19'
-import { deriveDiscoverySecret, deriveDiscoveryTags, toBytes } from './crypto.js'
+import { deriveDiscoverySecret, deriveDiscoveryTags, encryptIndex, toBytes } from './crypto.js'
 import * as nostr from './backends/nostr.js'
 import { logger } from './log.js'
 
@@ -21,6 +21,9 @@ export const DISCOVERY_RELAYS = ['wss://nos.lol', 'wss://nostr.mom', 'wss://purp
 export const DEFAULT_RELAYS = DISCOVERY_RELAYS
 const VAULT = 'vault.age'
 const BOOTSTRAP = 'bootstrap.json'
+const INDEX = 'index.ovk' // a copy of the encrypted index (format history 18)
+// the index copy goes out at most this often while a vault stays open, and once more on close
+export const INDEX_COPY_INTERVAL_MS = 5 * 60_000
 
 /** The discovery identity. Takes about a second (scrypt N=2^18); pass `secret` on to skip it later. */
 export async function discoveryIdentity (passphrase, vaultName) {
@@ -81,7 +84,9 @@ async function readRecords (secret, relays, opts, tags) {
         const record = await b.get(BOOTSTRAP)
         const vaultAge = record && await b.get(VAULT)
         if (!record || !vaultAge) return { relay: b.where, error: 'nothing there' }
-        return { relay: b.where, vaultAge, bootstrap: JSON.parse(new TextDecoder().decode(record)), at: b.publishedAt(BOOTSTRAP) }
+        // the index copy is a bonus: a relay without one (or an old record) still counts
+        const indexBlob = tags ? await b.get(INDEX).catch(() => null) : null
+        return { relay: b.where, vaultAge, bootstrap: JSON.parse(new TextDecoder().decode(record)), at: b.publishedAt(BOOTSTRAP), indexBlob }
       } catch (err) {
         return { relay: b.where, error: err.message }
       }
@@ -95,7 +100,8 @@ async function readRecords (secret, relays, opts, tags) {
  * Find vault.age and the bootstrap record from name + passphrase. Asks every relay under the
  * vault's own d tags and keeps the newest bootstrap; with none there, the old fixed tags. A
  * record found only under those is published again under the new tags (the old events stay).
- * -> { vaultAge: Uint8Array, bootstrap: object, from: relay URL, npub, legacy: boolean }
+ * -> { vaultAge: Uint8Array, bootstrap: object, from: relay URL, npub, legacy: boolean,
+ *   indexBlobs: Uint8Array[] (the index copies found, still encrypted with the vault keys) }
  * @param {string} passphrase
  * @param {string} vaultName
  * @param {{relays?: string[], secret?: Uint8Array, pause?: number, WebSocketImpl?: any}} [options] as for publishBootstrap
@@ -118,7 +124,56 @@ export async function fetchBootstrap (passphrase, vaultName, { relays = DEFAULT_
       .then((r) => logger.info(`recovery record moved to this vault's own tags on ${r.filter((x) => x.ok).length}/${r.length} relays (the old copies stay)`))
       .catch((err) => logger.warn(`recovery record found under the old shared tags, republishing under the new ones failed: ${err.message}`))
   }
-  return { vaultAge: good[0].vaultAge, bootstrap: good[0].bootstrap, from: good[0].relay, npub: npubEncode(getPublicKey(secret)), legacy }
+  const indexBlobs = found.map((f) => f.indexBlob).filter(Boolean)
+  return { vaultAge: good[0].vaultAge, bootstrap: good[0].bootstrap, from: good[0].relay, npub: npubEncode(getPublicKey(secret)), legacy, indexBlobs }
+}
+
+/**
+ * Keeps the index copy next to the recovery record current, for Overkill's `indexMirror`: every
+ * index write is offered. One that changes the notes or their locators goes out at once (that is
+ * what another device needs to find a note); other changes (the health ledger) at most every
+ * `minIntervalMs`, the newest of them otherwise on `flush` (close). Never throws.
+ * @param {{keys: any, secret: () => Promise<Uint8Array>, relays: string[], minIntervalMs?: number, pause?: number, WebSocketImpl?: any}} o
+ *   `secret`: called once, when the first copy goes out (the scrypt is not paid before that)
+ */
+export function indexMirror ({ keys, secret, relays, minIntervalMs = INDEX_COPY_INTERVAL_MS, ...opts }) {
+  let pending = null
+  let last = 0
+  let sentShape = null
+  let running = Promise.resolve()
+  let bs = null // kept between copies: replacements of one d tag must get rising created_at
+  let key = null
+  const shape = (index) => JSON.stringify([index.notes, index.locators ?? {}])
+  const send = () => {
+    const index = pending
+    pending = null
+    last = Date.now()
+    sentShape = shape(index)
+    running = running.then(async () => {
+      key ??= secret()
+      const k = await key
+      bs ??= adapters(k, relays, opts, await deriveDiscoveryTags(k))
+      const blob = await encryptIndex(keys, index)
+      const res = await Promise.all(bs.map((b) => b.put(INDEX, blob).then(() => ({ relay: b.where, ok: true }), (err) => ({ relay: b.where, ok: false, error: err.message }))))
+      const ok = res.filter((r) => r.ok).length
+      if (ok) logger.debug(`index copy next to the recovery record: on ${ok}/${res.length} relays`)
+      else logger.warn(`index copy next to the recovery record not stored (${res.map((r) => `${r.relay}: ${r.error}`).join('; ')})`)
+    }).catch((err) => logger.warn(`index copy next to the recovery record: ${err.message}`))
+    return running
+  }
+  return {
+    offer (index) {
+      pending = index
+      if (shape(index) !== sentShape || Date.now() - last >= minIntervalMs) return send()
+    },
+    async flush () {
+      if (pending) send()
+      await running
+      const open = bs
+      bs = null
+      await Promise.all((open ?? []).map((b) => b.close()))
+    }
+  }
 }
 
 /**

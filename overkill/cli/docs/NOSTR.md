@@ -53,6 +53,9 @@ zero-signup first"):
   sees two opaque events by an unlinked npub. Records from before that sit at the shared tags
   `overkill-discovery/vault.age` and `overkill-discovery/bootstrap.json`; `fetchBootstrap` falls
   back to them and republishes under the new tags (`legacy: true` in its result).
+- A third event, under `tag("index.ovk")`, holds a copy of the encrypted index (format history
+  18), kept current by `indexMirror` (the store's `indexMirror` option); `fetchBootstrap` returns
+  the copies it found as `indexBlobs`, and recovery seeds the index cache with them.
 - `auditBootstrap(secret, relays)` says when each relay last got the record (null: none);
   `refresh` republishes when a relay that answered lacks it or holds one older than 30 days.
 - `publishBootstrap(passphrase, vaultName, vaultAgeBytes, bootstrapJson, { relays, secret })`

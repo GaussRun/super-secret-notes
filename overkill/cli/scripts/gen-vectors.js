@@ -86,7 +86,7 @@ for (const x of discoveryCases) {
   discovery.cases.push({ ...x, salt: `overkill v1 discovery:${x.vault_name.normalize('NFC')}`, secret_hex: c.toHex(secret), nsec: nsecEncode(secret), pubkey_hex: id.pubkey, npub: id.npub })
 }
 const discoveryTags = {
-  note: 'd tags of the recovery record: HKDF-SHA256(ikm = discovery secret (the discovery cases), salt = empty, info = "overkill v1 discovery tag:" || path, 32 bytes) as lowercase hex, for path vault.age and bootstrap.json',
+  note: 'd tags of the recovery record: HKDF-SHA256(ikm = discovery secret (the discovery cases), salt = empty, info = "overkill v1 discovery tag:" || path, 32 bytes) as lowercase hex, for path vault.age, bootstrap.json and (format history 18) index.ovk',
   cases: []
 }
 for (const hex of new Set(discovery.cases.map((x) => x.secret_hex))) discoveryTags.cases.push({ secret_hex: hex, ...await c.deriveDiscoveryTags(c.fromHex(hex)) })

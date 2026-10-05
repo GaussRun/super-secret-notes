@@ -14,7 +14,7 @@ import { parseKit, recoveryKit } from './kit.js'
 import { makeBackup, openBackup } from './backup.js'
 import path from 'node:path'
 import { SecretStore, migrateConfig } from './vaultsecrets.js'
-import { publishIfNeeded } from './discovery.js'
+import { publishIfNeeded, indexMirror } from './discovery.js'
 import { ledgerStatus, ago, retention } from './status.js'
 import { registerHostsCommand } from './hosts/command.js'
 import { mentions, replacementHints } from './hosts/pick.js'
@@ -40,6 +40,7 @@ export { recoveryKit }
 async function withStore (opts, fn) {
   const home = homeDir(opts.home)
   const { store, vault, cfg, passphrase: pass, vaultBytes } = await open(home, () => passphrase())
+  store.indexMirror = indexMirror({ cfg, passphrase: pass, keys: store.keys })
   try {
     return await fn(store, { vault, cfg, home, pass, vaultBytes })
   } finally {
@@ -353,7 +354,7 @@ export function buildCli () {
     .description('download every copy from every backend and verify it')
     .option('-v, --verbose', 'list every copy, not just the ones with problems (the default up to 6 backends)')
     .action(async (o) => {
-      await withStore(program.opts(), async (store) => {
+      await withStore(program.opts(), async (store, ctx) => {
         const compact = !o.verbose && store.backends.length > 6
         const { lines, healthy, total } = summarize(await store.check(), { compact })
         const w = Math.max(...lines.map((l) => l.label.length))
@@ -361,6 +362,8 @@ export function buildCli () {
         if (!store.remoteIndex) out(await localIndexLine(program.opts(), store))
         const all = healthy === total
         out((all ? green : red)(`${healthy}/${total} copies healthy`) + (all ? '. Gloriously redundant.' : '. Run `super-secret-notes repair`.'))
+        // the recovery record is a copy too: put it back where a discovery relay lost it
+        await publishDiscovery({ ...ctx, store, audit: true })
         if (!all) process.exitCode = 1
       })
     })
@@ -468,6 +471,8 @@ export function buildCli () {
             out('The backend list changed: reprint the recovery kit with `super-secret-notes kit`.')
           }
         }
+        // the recovery record too, where a discovery relay lost it (a swap above published it already)
+        await publishDiscovery({ ...ctx, store, audit: true })
         for (const x of failed) out(`${red('could not repair')} ${x}`)
         if (!fixed.length && !failed.length && !diverged.length) out('Nothing to repair. Everything is fine. Suspiciously fine.')
         for (const hint of await replacementHints({ index: store.lastIndex, backends: ctx.cfg.backends, home: ctx.home, fixed, created: ctx.vault.created })) out(hint)

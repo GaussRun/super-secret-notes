@@ -36,8 +36,8 @@ test('discovery tag known answers: vectors.json and node:crypto HKDF agree', asy
   assert.ok(V.discovery_tags.cases.length >= 3)
   for (const v of V.discovery_tags.cases) {
     const tags = await c.deriveDiscoveryTags(c.fromHex(v.secret_hex))
-    assert.deepEqual(tags, { 'vault.age': v['vault.age'], 'bootstrap.json': v['bootstrap.json'] })
-    for (const p of ['vault.age', 'bootstrap.json']) {
+    assert.deepEqual(tags, { 'vault.age': v['vault.age'], 'bootstrap.json': v['bootstrap.json'], 'index.ovk': v['index.ovk'] })
+    for (const p of ['vault.age', 'bootstrap.json', 'index.ovk']) {
       const ref = Buffer.from(nodeCrypto.hkdfSync('sha256', c.fromHex(v.secret_hex), new Uint8Array(0), `overkill v1 discovery tag:${p}`, 32)).toString('hex')
       assert.equal(ref, v[p])
     }

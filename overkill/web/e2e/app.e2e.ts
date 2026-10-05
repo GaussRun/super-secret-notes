@@ -110,8 +110,9 @@ test('setup: generated passphrase, vault.age on every host, the kit, the recover
 	for (const r of fakes.relays) {
 		const tags = [...r.store.values()].map((e) => e.tags.find((t) => t[0] === 'd')?.[1]);
 		expect(tags).toEqual(expect.arrayContaining(['overkill/vault.age', 'overkill/index.ovk']));
-		// the recovery record under the vault's own d tags (format history 17), never the shared ones
-		expect(tags.filter((t) => /^[0-9a-f]{64}$/.test(t ?? ''))).toHaveLength(2);
+		// the recovery record and the index copy beside it under the vault's own d tags (format
+		// history 17 and 18), never the shared ones
+		expect(tags.filter((t) => /^[0-9a-f]{64}$/.test(t ?? ''))).toHaveLength(3);
 		expect(tags.filter((t) => t?.startsWith('overkill-discovery/'))).toEqual([]);
 	}
 	// PrivateBin only ever saw CORS simple requests that it answered as JSON

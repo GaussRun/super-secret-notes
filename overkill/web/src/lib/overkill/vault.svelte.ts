@@ -7,7 +7,7 @@ import { fallbackPicker } from '$cli/fallbacks.js';
 import { makeBackup, openBackup } from '$cli/backup.js';
 import { readLocalCopy, writeLocalCopy, localCopyBackend, type LocalFiles } from './localcopy';
 import * as bootstrap from '$cli/bootstrap.js';
-import { bootstrapRecord, recordHash, publishDue, auditDue, configFromBootstrap, DISCOVERY_TAGS_VERSION } from '$cli/discovery-core.js';
+import { bootstrapRecord, recordHash, publishDue, auditDue, configFromBootstrap, indexCacheFromCopies, DISCOVERY_TAGS_VERSION } from '$cli/discovery-core.js';
 import { SecretStoreCore, migrateConfig, SECRETS_ID } from '$cli/vaultsecrets-core.js';
 import { recoveryKit } from '$cli/kit.js';
 import { ledgerStatus } from '$cli/status.js';
@@ -138,6 +138,8 @@ class VaultState {
 		if (!blob) throw new Error('this browser has vault.age but lost its config: forget this device in Settings and recover by name');
 		const conf = JSON.parse(dec.decode(await c.decryptBlob(keys, CONFIG_ID, blob))) as WebConfig;
 		await this.#open({ vault, keys, passphrase, vaultBytes, conf });
+		// in the background: put the recovery record back where a discovery relay lost it or it is old
+		void this.publishDiscovery({ audit: true }).catch((err) => logger.warn(`recovery by name: ${(err as Error).message}`));
 	}
 
 	async #saveConfig() {
@@ -172,7 +174,11 @@ class VaultState {
 		// a restored backup in this browser: read first (instant, no host needed)
 		if (this.#localCopy) backends.unshift(localCopyBackend(this.#localCopy));
 		if (!backends.length) throw new Error('none of this vault\'s backends works from a browser (PrivateBin, CryptPad, Nostr and Blossom do); use the CLI');
-		return new Overkill({ backends, keys, vaultBytes, logger, indexCache: blobIo(FILES.indexCache), indexSync: cfg.index_sync ?? 'always', hostTimeoutMs: hosts.timeouts.host });
+		// the index copy next to the recovery record (format history 18), on the discovery relays
+		const indexMirror = cfg.name && hosts.discovery.length
+			? bootstrap.indexMirror({ keys, relays: hosts.discovery, pause: hosts.nostrPauseMs, secret: async () => (this.#discoverySecret ??= (await bootstrap.discoveryIdentity(this.#pass!, cfg.name!)).secret) })
+			: null;
+		return new Overkill({ backends, keys, vaultBytes, logger, indexCache: blobIo(FILES.indexCache), indexSync: cfg.index_sync ?? 'always', hostTimeoutMs: hosts.timeouts.host, indexMirror });
 	}
 
 	/**
@@ -300,7 +306,7 @@ class VaultState {
 		name = name.normalize('NFC');
 		const { secret } = await step('deriving the discovery key (scrypt, a few seconds)', () => bootstrap.discoveryIdentity(passphrase, name));
 		const found = await step(`asking ${hosts.discovery.length} relays for the recovery record`, () => bootstrap.fetchBootstrap(passphrase, name, { relays: hosts.discovery, secret, pause: hosts.nostrPauseMs }), (f) => `found it on ${f.from}`);
-		const { vaultBytes, cfg, others, from, secretsBlob } = configFromBootstrap(found, name);
+		const { vaultBytes, cfg, others, from, secretsBlob, indexBlobs } = configFromBootstrap(found, name);
 		const vault = await step('opening vault.age', () => c.decryptVault(vaultBytes, passphrase));
 		const keys = await c.unlockKeys(vault);
 		if (secretsBlob) await c.decryptBlob(keys, SECRETS_ID, secretsBlob); // must open before anything is written
@@ -308,6 +314,9 @@ class VaultState {
 		await testHook();
 		await writeBlob(FILES.vault, vaultBytes);
 		if (secretsBlob) await writeBlob(FILES.secrets, secretsBlob);
+		// the index copy from the record: the notes are found even when no index holder has the index
+		const indexCache = await indexCacheFromCopies(keys, indexBlobs);
+		if (indexCache) await writeBlob(FILES.indexCache, indexCache);
 		const conf: WebConfig = { v: 1, cfg: cfg as VaultCfg, published: null };
 		this.#keys = keys;
 		this.#conf = conf;

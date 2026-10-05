@@ -163,13 +163,14 @@ export async function deriveDiscoverySecret (passphrase, vaultName) {
 /**
  * The d tags of a vault's recovery record (format history 17): per vault and random-looking, so
  * no relay query by a well-known tag lists every vault. HKDF-SHA256(ikm = discovery secret,
- * salt = empty, info = "overkill v1 discovery tag:" || path, 32 bytes), lowercase hex.
+ * salt = empty, info = "overkill v1 discovery tag:" || path, 32 bytes), lowercase hex. `index.ovk`
+ * is the copy of the index that travels with the record (format history 18).
  * @param {Uint8Array} discoverySecret from deriveDiscoverySecret
- * @returns {Promise<{'vault.age': string, 'bootstrap.json': string}>}
+ * @returns {Promise<{'vault.age': string, 'bootstrap.json': string, 'index.ovk': string}>}
  */
 export async function deriveDiscoveryTags (discoverySecret) {
   const tag = async (p) => toHex(await hkdf(discoverySecret, `overkill v1 discovery tag:${p}`))
-  return { 'vault.age': await tag('vault.age'), 'bootstrap.json': await tag('bootstrap.json') }
+  return { 'vault.age': await tag('vault.age'), 'bootstrap.json': await tag('bootstrap.json'), 'index.ovk': await tag('index.ovk') }
 }
 
 /** Raw derived key bytes. Exposed for known-answer tests. */

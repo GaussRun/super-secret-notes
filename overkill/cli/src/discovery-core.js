@@ -1,6 +1,6 @@
 // The storage-independent half of discovery.js: what goes into the bootstrap record, when it is
 // due again, and turning a fetched record back into a config. Shared with the web client.
-import { sha256Hex, deriveCryptpadCredentials, paths, toBase64, fromBase64 } from './crypto.js'
+import { sha256Hex, deriveCryptpadCredentials, paths, toBase64, fromBase64, decryptIndex, encryptIndex, mergeIndexes } from './crypto.js'
 import { SECRET_FIELDS } from './vaultsecrets-core.js'
 import { identity } from './backends/nostr.js'
 import { DEFAULT_ROOT } from './defaults-core.js'
@@ -78,12 +78,25 @@ export function auditDue (audit, now = Date.now()) {
   return audit.some((x) => !x.error && (!x.at || now - x.at.getTime() >= REPUBLISH_DAYS * 86_400_000))
 }
 
-/** A fetched bootstrap (bootstrap.fetchBootstrap) -> { vaultBytes, cfg, others, from, npub, secretsBlob }. */
-export function configFromBootstrap ({ vaultAge, bootstrap: rec, from, npub }, name) {
+/**
+ * A fetched bootstrap (bootstrap.fetchBootstrap) -> { vaultBytes, cfg, others, from, npub, secretsBlob, indexBlobs }.
+ * @param {{vaultAge: any, bootstrap: any, from: any, npub: any, indexBlobs?: Uint8Array[]}} found
+ * @param {string} name
+ */
+export function configFromBootstrap ({ vaultAge, bootstrap: rec, from, npub, indexBlobs = [] }, name) {
   if (!Array.isArray(rec?.backends) || !rec.backends.length) {
     const others = (rec?.others ?? []).map((b) => `${b.name} (${b.type})`).join(', ')
     throw new Error(`found the vault on ${from}, but none of its backends works without its own login${others ? ` (${others})` : ''}; recover with the kit and init --from instead`)
   }
   const cfg = { v: 1, name: rec.name ?? name, root: rec.root ?? DEFAULT_ROOT, ...(rec.index_sync && rec.index_sync !== 'always' ? { index_sync: rec.index_sync } : {}), backends: rec.backends }
-  return { vaultBytes: vaultAge, cfg, others: rec.others ?? [], from, npub, secretsBlob: rec.secrets ? fromBase64(rec.secrets) : null }
+  return { vaultBytes: vaultAge, cfg, others: rec.others ?? [], from, npub, secretsBlob: rec.secrets ? fromBase64(rec.secrets) : null, indexBlobs }
+}
+
+/**
+ * The index copies that came with the recovery record, merged (the usual merge rules) and
+ * encrypted again for this device's index cache; null when none opens with these keys.
+ */
+export async function indexCacheFromCopies (keys, indexBlobs = []) {
+  const indexes = (await Promise.all(indexBlobs.map((b) => decryptIndex(keys, b).catch(() => null)))).filter(Boolean)
+  return indexes.length ? encryptIndex(keys, mergeIndexes(...indexes)) : null
 }

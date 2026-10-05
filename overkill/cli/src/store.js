@@ -18,6 +18,8 @@ export const MIN_COPIES = 2
 // how long one host may take for one call before it counts as FAILED (an adapter's own
 // `timeoutMs` wins; the web app sets shorter ones)
 export const DEFAULT_HOST_TIMEOUT_MS = 120_000
+// a note read asks the next host when the current one has not answered for this long
+export const HEDGE_MS = 2_000
 
 function withTimeout (promise, ms, what) {
   let timer
@@ -61,8 +63,11 @@ export class Overkill {
    * @param {{debug: Function, info: Function, warn: Function}} [o.logger] default: the winston logger
    * @param {() => Date} [o.now] clock for the health ledger (tests)
    * @param {number} [o.hostTimeoutMs] deadline for one call on one host (adapters' own `timeoutMs` wins)
+   * @param {{offer(index: any): any, flush(): Promise<any>} | null} [o.indexMirror] gets every index
+   *   written with index_sync "always" (bootstrap.indexMirror: the copy next to the recovery record)
+   * @param {number} [o.hedgeMs] a note read also asks the next host after this long without an answer
    */
-  constructor ({ backends, keys, vaultBytes, logger = defaultLogger, indexCache = null, now = () => new Date(), indexSync = 'always', hostTimeoutMs = DEFAULT_HOST_TIMEOUT_MS }) {
+  constructor ({ backends, keys, vaultBytes, logger = defaultLogger, indexCache = null, now = () => new Date(), indexSync = 'always', hostTimeoutMs = DEFAULT_HOST_TIMEOUT_MS, indexMirror = null, hedgeMs = HEDGE_MS }) {
     if (!backends.length) throw new Error('no backends configured')
     this.hostTimeoutMs = hostTimeoutMs
     this.late = new Set() // puts that missed their deadline and are still running
@@ -82,6 +87,9 @@ export class Overkill {
     this.now = now
     this.pending = [] // health ledger results not yet written to the index
     this.indexWrites = Promise.resolve()
+    this.indexMirror = indexMirror
+    this.hedgeMs = hedgeMs
+    this.refreshing = null // the background read of the remote index copies behind a quick answer
   }
 
   /** Remember a verification result for the health ledger (written with the next index). */
@@ -176,14 +184,19 @@ export class Overkill {
   }
 
   async readIndexes (holders = this.indexHolders) {
-    return Promise.all(holders.map(async (b) => {
+    return Promise.all(this.indexReads(holders))
+  }
+
+  // one read per holder, each settling on its own -> [Promise<{ backend, ok, value?, error? }>]
+  indexReads (holders = this.indexHolders) {
+    return holders.map(async (b) => {
       try {
         const blob = await b.get(c.paths.index)
         return { backend: b, ok: true, value: blob ? await c.decryptIndex(this.keys, blob) : null }
       } catch (err) {
         return { backend: b, ok: false, error: err }
       }
-    }))
+    })
   }
 
   /** The local encrypted copy, or null. */
@@ -192,7 +205,38 @@ export class Overkill {
     return blob ? c.decryptIndex(this.keys, blob) : null
   }
 
-  async mergedIndex () {
+  /**
+   * The index: this device's copy merged with every index holder's. `quick` (reads: list, get)
+   * answers from this device's copy at once when there is one, and reads the holders in the
+   * background (`refreshing`), merging what arrives into that copy; writes always wait for the
+   * holders, so an index never goes up without what they know. `reads`: holder reads already
+   * under way (indexReads).
+   */
+  async mergedIndex ({ quick = false, reads = null } = {}) {
+    if (quick && this.remoteIndex && this.indexHolders.length) {
+      const local = await this.localIndex().catch(() => null)
+      if (local) {
+        await this.learnLocators(local)
+        this.refreshing ??= this.mergedIndex().catch((err) => { this.log.debug(`index refresh: ${err.message}`); return null }).finally(() => { this.refreshing = null })
+        return local
+      }
+      // no copy here yet: once one holder answered with an index, the others get `hedgeMs` more;
+      // a read then goes ahead with what arrived (the full merge carries on in the background)
+      const reads = this.indexReads()
+      const full = this.mergedIndex({ reads })
+      this.refreshing ??= full.catch((err) => { this.log.debug(`index refresh: ${err.message}`); return null }).finally(() => { this.refreshing = null })
+      const got = []
+      const first = new Promise((resolve) => { for (const r of reads) r.then((x) => { if (x.ok && x.value) { got.push(x.value); resolve() } }) })
+      const won = await Promise.race([full.then((index) => ({ index })), first.then(() => null)])
+      if (won) return won.index
+      const late = await Promise.race([full.then((index) => ({ index }), () => null), sleep(this.hedgeMs).then(() => null)])
+      if (late) return late.index
+      // kept as this device's copy, so the next read answers at once (the full merge adds the rest)
+      const index = c.mergeIndexes(...got)
+      await this.learnLocators(index)
+      await this.cache(index)
+      return index
+    }
     if (!this.remoteIndex) {
       // index_sync manual/never: this machine's copy is the index. A machine without one yet
       // (just recovered) starts from whatever was last synced to the backends.
@@ -206,7 +250,7 @@ export class Overkill {
       return merged
     }
     if (!this.indexHolders.length) throw new Error('no backend can hold the index: add one that is not PrivateBin or Blossom')
-    const res = await this.readIndexes()
+    const res = await Promise.all(reads ?? this.indexReads())
     for (const r of res) if (!r.ok) this.log.warn(`${r.backend.name}: index unreadable (${r.error.message})`)
     const good = res.filter((r) => r.ok)
     if (!good.length) {
@@ -228,13 +272,17 @@ export class Overkill {
   /** Put the pending ledger results into the local index copy now; the next index write uploads them. */
   async keepLedger (index) {
     if (!this.pending.length) return
-    await this.cache(this.withHealth(index))
+    // merged with the copy as it is now: a background refresh may have added to it meanwhile
+    const now = await this.localIndex().catch(() => null)
+    await this.cache(this.withHealth(now ? c.mergeIndexes(now, index) : index))
   }
 
-  // Locator-addressed backends (PrivateBin) learn where other devices put things, once per run.
+  // Locator-addressed backends (PrivateBin) learn where other devices put things, again whenever
+  // an index brings locators or pastes not seen yet in this run.
   async learnLocators (index) {
-    if (this.learned) return
-    this.learned = true
+    const seen = JSON.stringify([index.locators ?? {}, index.pastes ?? {}])
+    if (this.learned === seen) return
+    this.learned = seen
     for (const b of this.backends) {
       // pastes first: their creation times let an adapter keep a newer locator of its own
       if (b.adoptPastes) await b.adoptPastes(index.pastes?.[b.name])
@@ -303,6 +351,8 @@ export class Overkill {
     this.lastIndex = index
     await this.cache(index)
     if (!this.remoteIndex) return []
+    // the copy next to the recovery record goes out on its own schedule; it never holds this up
+    this.indexMirror?.offer(index)
     return this.uploadIndex(index, only)
   }
 
@@ -420,7 +470,9 @@ export class Overkill {
    */
   async get (name, { from } = {}) {
     name = c.normalizeName(name)
-    const index = await this.mergedIndex()
+    let index = await this.mergedIndex({ quick: true })
+    // a note this device has not heard of yet: wait for what the hosts know
+    if (!index.notes[name] && this.refreshing) index = (await this.refreshing) ?? index
     const entry = index.notes[name]
     const id = entry?.id ?? await c.blobIdForName(this.keys, name)
     if (from) {
@@ -438,8 +490,7 @@ export class Overkill {
     const problems = []
     // every copy read here was fully verified (or failed): that goes into the health ledger, like a check
     const note = (b, status) => { if (entry) this.record(name, b.name, status, b.expiresAt?.(c.paths.note(id))) }
-    for (const b of this.backends) {
-      const status = await this.readCopy(b, id, entry)
+    for (const { b, status } of await this.hedgedReads(id, entry)) {
       note(b, status.status)
       if (status.status === STATUS.OK) {
         if (!entry) this.log.warn(`"${name}" is not in the index (written after the last index sync?); read it by name, its sha256 cannot be checked`)
@@ -458,6 +509,45 @@ export class Overkill {
     if (entry) throw new Error(`no healthy copy of "${name}" (${why})`)
     if (problems.every((p) => p.status === STATUS.MISSING)) throw new Error(`no note called "${name}". \`super-secret-notes ls\` lists your notes.`)
     throw new Error(`no note called "${name}" in the index, and no backend had a readable copy (${why})`)
+  }
+
+  /**
+   * Reads of one note in read-preference order, hedged: the next host is asked as soon as every
+   * one asked so far has failed, or after `hedgeMs` without an answer. Settles at the first
+   * healthy copy (or when all have answered) -> [{ b, status }] for the hosts that answered
+   * before then, in preference order, ending with the healthy one.
+   */
+  hedgedReads (id, entry) {
+    const n = this.backends.length
+    const results = new Array(n)
+    return new Promise((resolve) => {
+      let next = 0
+      let answered = 0
+      let done = false
+      let timer = null
+      const finish = (healthy) => {
+        done = true
+        clearTimeout(timer)
+        const failed = results.filter((x) => x && x.status.status !== STATUS.OK)
+        resolve(healthy ? [...failed, healthy] : failed)
+      }
+      const start = () => {
+        if (done || next >= n) return
+        const i = next++
+        const b = this.backends[i]
+        clearTimeout(timer)
+        timer = setTimeout(start, this.hedgeMs)
+        this.readCopy(b, id, entry).catch((err) => ({ status: STATUS.ERROR, detail: err.message })).then((status) => {
+          results[i] = { b, status }
+          answered++
+          if (done) return
+          if (status.status === STATUS.OK) return finish({ b, status })
+          if (answered === n) return finish(null)
+          if (answered === next) start()
+        })
+      }
+      start()
+    })
   }
 
   /**
@@ -499,7 +589,7 @@ export class Overkill {
   }
 
   async list () {
-    return (await this.mergedIndex()).notes
+    return (await this.mergedIndex({ quick: true })).notes
   }
 
   /** Download every copy from every backend and verify it. */
@@ -638,10 +728,15 @@ export class Overkill {
   }
 
   /** `lateGraceMs`: how long to wait for puts that missed their deadline (they record or clean up). */
-  async close ({ lateGraceMs = 10_000 } = {}) {
+  async close ({ lateGraceMs = 10_000, mirrorGraceMs = 60_000 } = {}) {
     if (this.late.size) {
       let timer
       await Promise.race([Promise.allSettled([...this.late]), new Promise((resolve) => { timer = setTimeout(resolve, lateGraceMs) })])
+      clearTimeout(timer)
+    }
+    if (this.indexMirror) {
+      let timer
+      await Promise.race([this.indexMirror.flush(), new Promise((resolve) => { timer = setTimeout(resolve, mirrorGraceMs) })])
       clearTimeout(timer)
     }
     await Promise.all(this.backends.map((b) => b.close?.().catch(() => {})))

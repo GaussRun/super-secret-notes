@@ -78,7 +78,7 @@ describe('known-answer vectors from the CLI', () => {
 
 	test('discovery record d tags', async () => {
 		for (const x of V.discovery_tags.cases) {
-			expect(await c.deriveDiscoveryTags(c.fromHex(x.secret_hex))).toEqual({ 'vault.age': x['vault.age'], 'bootstrap.json': x['bootstrap.json'] });
+			expect(await c.deriveDiscoveryTags(c.fromHex(x.secret_hex))).toEqual({ 'vault.age': x['vault.age'], 'bootstrap.json': x['bootstrap.json'], 'index.ovk': x['index.ovk'] });
 		}
 	});
 });

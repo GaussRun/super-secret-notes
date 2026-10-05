@@ -51,6 +51,13 @@ export async function publishIfNeeded ({ cfg, home, passphrase, vaultBytes, back
   return results
 }
 
+/** The copy of the index next to the recovery record (store option `indexMirror`), or null. */
+export function indexMirror ({ cfg, passphrase, keys }) {
+  const relays = discoveryRelays()
+  if (!cfg.name || !relays.length || !passphrase) return null
+  return bootstrap.indexMirror({ keys, relays, secret: async () => (await bootstrap.discoveryIdentity(passphrase, cfg.name)).secret, ...relayOpts() })
+}
+
 /** Name + passphrase -> { vaultBytes, cfg } (nothing written yet). */
 export async function fetchVault ({ name, passphrase }) {
   return core.configFromBootstrap(await bootstrap.fetchBootstrap(passphrase, name, { relays: discoveryRelays(), ...relayOpts() }), name)

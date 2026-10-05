@@ -475,22 +475,25 @@
     ]
   },
   "discovery_tags": {
-    "note": "d tags of the recovery record: HKDF-SHA256(ikm = discovery secret (the discovery cases), salt = empty, info = \"overkill v1 discovery tag:\" || path, 32 bytes) as lowercase hex, for path vault.age and bootstrap.json",
+    "note": "d tags of the recovery record: HKDF-SHA256(ikm = discovery secret (the discovery cases), salt = empty, info = \"overkill v1 discovery tag:\" || path, 32 bytes) as lowercase hex, for path vault.age, bootstrap.json and (format history 18) index.ovk",
     "cases": [
       {
         "secret_hex": "26c8386ebfbecd56cf7d6be141eb91e21babf2ebfc758928fbf90f5360146177",
         "vault.age": "93dcf757ddc0b14542d3bd715353eb8d5ab65f28cdae9b19502eac7e09df5aae",
-        "bootstrap.json": "c7afe514d9b38140589ce851840e9351e64d64e6b621aedfdd4874546b17abd6"
+        "bootstrap.json": "c7afe514d9b38140589ce851840e9351e64d64e6b621aedfdd4874546b17abd6",
+        "index.ovk": "8ac3c825292ca4be4c4a38febf7c14e8e18b72cd43903bda2fbcbfa8ffb20b8a"
       },
       {
         "secret_hex": "e07e9ac5ffc9e386c12fdf999b3288c43a1460709424cf01f68bd2aad9eb87ed",
         "vault.age": "617840b2f47c8c52dd9a6dcc624f65724ea1ef2402db8fb36d0cfaf35a1d1244",
-        "bootstrap.json": "881f5a193c68d9ec896b9ebb5f219854b19bd31cba76c482f8b2f41da1b9013a"
+        "bootstrap.json": "881f5a193c68d9ec896b9ebb5f219854b19bd31cba76c482f8b2f41da1b9013a",
+        "index.ovk": "2208baee9823f5d249d8def88677adf525c1e3dcc17829d94bbde6a36ede5b0d"
       },
       {
         "secret_hex": "417c16d991c1d05a3e9ebf158921df5ea7d1287c3fadcb73af34a2cc2b760f76",
         "vault.age": "4cbe3d40934e530e4047f00f14566016cfac521f58218873b31fae1d7dd002af",
-        "bootstrap.json": "1a7ec31c3cb8e102bc51e06c40b472c937266fdffd2ebaece0c720206224bda7"
+        "bootstrap.json": "1a7ec31c3cb8e102bc51e06c40b472c937266fdffd2ebaece0c720206224bda7",
+        "index.ovk": "211580c700e09c2d0dbada959bb50dbeea617268ceed278c2c2f6cdbcdeabbee"
       }
     ]
   },

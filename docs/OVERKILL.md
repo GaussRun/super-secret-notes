@@ -199,6 +199,14 @@ provisions the default backends, uploads, and prints the recovery kit. No config
 - The recovery record goes to every relay that answers; recover-by-name needs at least 1, so
   0 gives a clear warning (the recovery kit still works).
 
+- Reads do not wait for dead hosts when this device can answer: `list` and `get` take this
+  device's index copy at once and read the index holders in the background, merging what
+  arrives (writes still wait for the holders, so an index never goes up without what they
+  know). Without a copy here yet (a fresh restore), a read takes the first holder that answers
+  with an index plus whatever the others send within 2 s, and keeps that as this device's copy.
+  A note this device has not heard of waits for the background read. A note read asks the hosts in
+  order, but also the next one after 2 s without an answer or as soon as all asked so far failed.
+
 ### Recovery with vault name + passphrase only (no locators needed)
 Zero-account hosts give no stable path, so bootstrap discovery through Nostr:
 - `discovery_key = scrypt(passphrase, salt = "overkill v1 discovery:" || NFC(vault_name), N=2^18, r=8, p=1, 32 bytes)`
@@ -474,9 +482,33 @@ Additions and clarifications made after the first version of the format. Both cl
       are not deleted (relays may not honour deletes, and an older client may still need them);
       they age out with the relays' retention.
     - Publish stamps carry `"tags": 2`; a stamp without it is due, so the next put, repair or
-      refresh moves a vault's record to the new tags. `refresh` (CLI) and repair/refresh (web)
-      also ask the discovery relays and republish when one that answers lacks the record or
-      holds one older than 30 days.
+      refresh moves a vault's record to the new tags. `check`, `repair` and `refresh` (CLI), and
+      unlock (in the background), repair and refresh (web) also ask the discovery relays and
+      republish when one that answers lacks the record or holds one older than 30 days.
+
+18. **A copy of the index next to the recovery record** (both clients). A third event under the
+    discovery key, d tag `tag("index.ovk")` (item 17's formula; vector `index.ovk` in
+    `discovery_tags`), holds the index exactly as on any index holder (`encryptIndex`, the OVK1
+    index blob), NIP-44 to self and chunked like any Nostr copy. Only the fixed discovery relays
+    get it (that is where recovery by name looks).
+    - Why: name + passphrase then give vault.age, the backend list and the index (with the
+      PrivateBin and Blossom locators of every note) in one hop. Notes on paste hosts stay
+      findable even when every index-holding host (CryptPad, Nostr) lost the index.
+    - Written with index_sync "always" only (manual/never keep the index on the device by
+      choice). Every index write is offered; one that changes `notes` or `locators` goes out at
+      once, other changes (the health ledger) at most every 5 minutes, and the newest pending one
+      on close (CLI: the end of each command; web: sign out, lock, replacing the vault). A browser
+      tab that is just closed can leave the copy behind by those ledger-only changes, never by a
+      note. Several copies of one tag in one second still replace each other in order (the
+      writer keeps its relay adapters and their rising `created_at`).
+    - Read: recover by name fetches it from every discovery relay with the record (a relay
+      without one is fine; records from before this item have none), decrypts what opens with the
+      vault keys, merges them (the usual merge rules) and stores the result as this device's index
+      cache. Every index read merges that cache with the remote copies, so the notes appear even
+      when no index holder answers with an index.
+    - It is another index copy, not a new authority: it is never preferred over the others, and
+      it is not listed in `check` (the health ledger tracks hosts, not the discovery relays).
+      Relays see one more opaque event under the discovery npub, as large as the index.
 
 Clarifications (no format change):
 
