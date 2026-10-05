@@ -46,9 +46,15 @@ zero-signup first"):
   invalid-scalar rule: retry with salt `"overkill v1 discovery 1:" || name`, and so on. Vectors:
   `discovery.cases` in `test/vectors.json` (secret hex, nsec, pubkey hex, npub; one NFD name),
   cross-checked against `node:crypto` scrypt.
-- Under it, on every default relay: `overkill-discovery/vault.age` (the vault.age bytes) and
-  `overkill-discovery/bootstrap.json`, same event format as above (kind 30078, NIP-44 to self,
-  chunked if large). A relay sees two opaque events by an unlinked npub.
+- Under it, on every discovery relay: the vault.age bytes and the bootstrap record, same event
+  format as above (kind 30078, NIP-44 to self, chunked if large), under per-vault d tags
+  `hex(HKDF-SHA256(discovery, info "overkill v1 discovery tag:vault.age"))` and the same with
+  `bootstrap.json` (`crypto.deriveDiscoveryTags`, docs/OVERKILL.md format history 17). A relay
+  sees two opaque events by an unlinked npub. Records from before that sit at the shared tags
+  `overkill-discovery/vault.age` and `overkill-discovery/bootstrap.json`; `fetchBootstrap` falls
+  back to them and republishes under the new tags (`legacy: true` in its result).
+- `auditBootstrap(secret, relays)` says when each relay last got the record (null: none);
+  `refresh` republishes when a relay that answered lacks it or holds one older than 30 days.
 - `publishBootstrap(passphrase, vaultName, vaultAgeBytes, bootstrapJson, { relays, secret })`
   publishes both to every relay (in parallel, one relay failing is fine, all failing throws)
   and returns `[{ relay, ok, error }]`. `fetchBootstrap(passphrase, vaultName, { relays, secret })`

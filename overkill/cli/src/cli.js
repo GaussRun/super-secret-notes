@@ -73,9 +73,9 @@ async function localIndexLine (opts, store) {
 }
 
 /** Keep the name + passphrase recovery record current; never fails the command. */
-async function publishDiscovery ({ cfg, home, pass, vaultBytes, store, force = false }) {
+async function publishDiscovery ({ cfg, home, pass, vaultBytes, store, force = false, audit = false }) {
   try {
-    const res = await publishIfNeeded({ cfg, home, passphrase: pass, vaultBytes, backends: store.backends, keys: store.keys, force })
+    const res = await publishIfNeeded({ cfg, home, passphrase: pass, vaultBytes, backends: store.backends, keys: store.keys, force, audit })
     if (res) out(`recovery by name: bootstrap on ${res.filter((r) => r.ok).length}/${res.length} relays`)
     if (res && !res.some((r) => r.ok)) logger.warn('recovery by name will not work until the bootstrap reaches a relay: run `super-secret-notes repair` later (the recovery kit works meanwhile)')
   } catch (err) {
@@ -481,7 +481,8 @@ export function buildCli () {
     .action(async (o) => {
       await withStore(program.opts(), async (store, ctx) => {
         const { fixed, failed } = await store.refresh({ days: Number(o.days) })
-        await publishDiscovery({ ...ctx, store })
+        // refresh also asks the discovery relays whether they still hold the record
+        await publishDiscovery({ ...ctx, store, audit: true })
         for (const x of fixed) out(`${green('refreshed')} ${x}`)
         for (const x of failed) out(`${red('could not refresh')} ${x}`)
         if (!fixed.length && !failed.length) out(`Nothing missing, nothing expiring within ${o.days} days. Your notes will outlive us all.`)

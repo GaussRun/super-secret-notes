@@ -6,6 +6,8 @@ import { identity } from './backends/nostr.js'
 import { DEFAULT_ROOT } from './defaults-core.js'
 
 export const REPUBLISH_DAYS = 30 // relays promise no retention; refresh keeps it young
+// which d tags a publish used (format history 17): 2 = per-vault tags; a stamp without it is due
+export const DISCOVERY_TAGS_VERSION = 2
 
 /**
  * Backends that need no secret beyond the vault itself travel in the record (locator-addressed
@@ -59,10 +61,21 @@ export async function recordHash (record, vaultBytes) {
   return sha256Hex(JSON.stringify(record) + (await sha256Hex(vaultBytes)))
 }
 
-/** Publish again when the record changed or the last publish ({ sha256, at }) is older than REPUBLISH_DAYS. */
+/**
+ * Publish again when the record changed, the last publish ({ sha256, at, tags }) is older than
+ * REPUBLISH_DAYS, or it went out under the old shared d tags.
+ */
 export function publishDue (last, hash, now = Date.now()) {
   const young = last && now - Date.parse(last.at) < REPUBLISH_DAYS * 86_400_000
-  return !(last?.sha256 === hash && young)
+  return !(last?.sha256 === hash && young && last.tags === DISCOVERY_TAGS_VERSION)
+}
+
+/**
+ * From bootstrap.auditBootstrap: due when a relay that answered has no record, or one older than
+ * REPUBLISH_DAYS. A relay that did not answer is left alone (publishing would not reach it either).
+ */
+export function auditDue (audit, now = Date.now()) {
+  return audit.some((x) => !x.error && (!x.at || now - x.at.getTime() >= REPUBLISH_DAYS * 86_400_000))
 }
 
 /** A fetched bootstrap (bootstrap.fetchBootstrap) -> { vaultBytes, cfg, others, from, npub, secretsBlob }. */

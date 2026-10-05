@@ -233,12 +233,13 @@ export async function openEvents (secret, d, fetch) {
 /**
  * @param {any} cfg
  * @param {any} ctx
- * @param {{WebSocketImpl?: any, pause?: number, backoff?: number}} [opts]
+ * @param {{WebSocketImpl?: any, pause?: number, backoff?: number, dTags?: Record<string, string>}} [opts]
+ *   `dTags`: path -> d tag for the paths that do not live at "<root>/<path>" (the recovery record)
  */
-export function create (cfg, ctx, { WebSocketImpl, pause = 3000, backoff = 30_000 } = {}) {
+export function create (cfg, ctx, { WebSocketImpl, pause = 3000, backoff = 30_000, dTags = {} } = {}) {
   const url = cfg.url.replace(/\/+$/, '')
   const root = cfg.root ?? ctx.root
-  const dTag = (rel) => `${root}/${rel}`
+  const dTag = (rel) => dTags[rel] ?? `${root}/${rel}`
   const retentionDays = cfg.assumeRetentionDays ?? ASSUMED_RETENTION_DAYS
   let secret = null
   let pubkey = null

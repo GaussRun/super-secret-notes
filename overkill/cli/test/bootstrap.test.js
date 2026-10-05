@@ -54,9 +54,11 @@ test('publish, then fetch with name + passphrase from any relay; newest record w
   const res = await publishBootstrap(x.passphrase, x.vault_name, vaultAge, record, { relays: [a.url, b.url], secret, ...fast })
   assert.deepEqual(res.map((r) => r.ok), [true, true])
 
-  // what a relay sees: two kind 30078 events by the discovery key, content NIP-44 only
+  // what a relay sees: two kind 30078 events by the discovery key under its own d tags, content NIP-44 only
   const evs = [...a.store.values()].filter((e) => e.pubkey === x.pubkey_hex)
-  assert.deepEqual(evs.map((e) => e.tags[0][1]).sort(), [`${DISCOVERY_ROOT}/bootstrap.json`, `${DISCOVERY_ROOT}/vault.age`])
+  const tags = await c.deriveDiscoveryTags(secret)
+  assert.deepEqual(evs.map((e) => e.tags[0][1]).sort(), [tags['bootstrap.json'], tags['vault.age']].sort())
+  assert.ok(evs.every((e) => !e.tags[0][1].startsWith(DISCOVERY_ROOT)))
   assert.ok(evs.every((e) => e.kind === nostr.KIND && !e.content.includes('pb.envs') && !e.content.includes('npub')))
 
   // the full path: derive from name + passphrase (no secret passed), fetch
@@ -90,7 +92,7 @@ test('wrong passphrase or vault name finds nothing; a dead relay does not break 
   assert.equal(getPublicKey(secret), x.pubkey_hex)
 })
 
-test('default bootstrap relays are the verified default relays', () => {
-  assert.deepEqual(DEFAULT_RELAYS, nostr.RELAYS.slice(0, nostr.DEFAULT_COUNT))
-  assert.ok(DEFAULT_RELAYS.length >= 3)
+test('default bootstrap relays: the verified default relays first, then others from the verified list', () => {
+  assert.deepEqual(DEFAULT_RELAYS.slice(0, nostr.DEFAULT_COUNT), nostr.RELAYS.slice(0, nostr.DEFAULT_COUNT))
+  assert.ok(DEFAULT_RELAYS.every((r) => nostr.RELAYS.includes(r)))
 })

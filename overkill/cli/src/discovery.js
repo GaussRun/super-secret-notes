@@ -28,10 +28,11 @@ export function bootstrapRecord (cfg, backends, keys) {
 const stampFile = (home) => path.join(home, 'bootstrap-published.json')
 
 /**
- * Publish when the record changed or the last publish is older than REPUBLISH_DAYS.
+ * Publish when the record changed or the last publish is older than REPUBLISH_DAYS; with `audit`
+ * (refresh) also when a discovery relay lost the record or holds an old one.
  * -> null when skipped (unnamed vault, relays off, nothing to do), else [{ relay, ok, error }].
  */
-export async function publishIfNeeded ({ cfg, home, passphrase, vaultBytes, backends, keys, force = false }) {
+export async function publishIfNeeded ({ cfg, home, passphrase, vaultBytes, backends, keys, force = false, audit = false }) {
   const fixed = discoveryRelays()
   if (!cfg.name || !fixed.length) return null
   // the fixed discovery relays, and the vault's own relays as well
@@ -39,9 +40,14 @@ export async function publishIfNeeded ({ cfg, home, passphrase, vaultBytes, back
   const record = await bootstrapRecord(cfg, backends, keys)
   const hash = await core.recordHash(record, vaultBytes)
   const last = await readFile(stampFile(home), 'utf8').then(JSON.parse, () => null)
-  if (!force && !core.publishDue(last, hash)) return null
-  const results = await bootstrap.publishBootstrap(passphrase, cfg.name, vaultBytes, record, { relays, ...relayOpts() })
-  await writePrivate(stampFile(home), JSON.stringify({ sha256: hash, at: new Date().toISOString(), relays: results }, null, 2))
+  let secret
+  if (!force && !core.publishDue(last, hash)) {
+    if (!audit) return null
+    secret = (await bootstrap.discoveryIdentity(passphrase, cfg.name)).secret
+    if (!core.auditDue(await bootstrap.auditBootstrap(secret, fixed, relayOpts()))) return null
+  }
+  const results = await bootstrap.publishBootstrap(passphrase, cfg.name, vaultBytes, record, { relays, secret, ...relayOpts() })
+  await writePrivate(stampFile(home), JSON.stringify({ sha256: hash, at: new Date().toISOString(), tags: core.DISCOVERY_TAGS_VERSION, relays: results }, null, 2))
   return results
 }
 

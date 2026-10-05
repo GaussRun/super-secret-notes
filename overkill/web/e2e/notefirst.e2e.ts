@@ -3,6 +3,8 @@
 import { test, expect } from '@playwright/test';
 import { startAllFakes, type Fakes } from './fakes';
 import { url, useFakes, watchErrors, recoverByName, readNote, expectNoLeak, nav, WORDLIST } from './helpers';
+import { discoveryIdentity } from '../../cli/src/bootstrap.js';
+import { deriveDiscoveryTags } from '../../cli/src/crypto.js';
 
 let fakes: Fakes;
 test.beforeAll(async () => {
@@ -33,9 +35,11 @@ test('write a note, one click: vault, hosts, note, recovery record; then recover
 	await expect(page.getByRole('link', { name: 'Print the kit' })).toBeVisible();
 	await expect(page.getByTestId('share-vault')).toBeVisible();
 	await expectNoLeak(page, passphrase);
+	// the recovery record under the vault's own d tags (format history 17)
+	const own = await deriveDiscoveryTags((await discoveryIdentity(passphrase, vaultName)).secret);
 	for (const r of fakes.relays) {
 		const tags = [...r.store.values()].map((e) => e.tags.find((t) => t[0] === 'd')?.[1]);
-		expect(tags).toContain('overkill-discovery/bootstrap.json');
+		expect(tags).toEqual(expect.arrayContaining([own['vault.age'], own['bootstrap.json']]));
 	}
 	await done.getByRole('link', { name: 'Open the note' }).click();
 	await expect(page.getByTestId('note-text')).toHaveValue('the spare key is under the third flowerpot');
@@ -94,6 +98,8 @@ test('note names: an empty one gets a made-up name; two notes in a row never sha
 	await page.getByRole('button', { name: 'Encrypt and scatter' }).click();
 	const saved = page.getByTestId('saved');
 	await expect(saved).toContainText('Saved "');
+	// the line may still show the second save for a moment; wait for this one
+	await expect(saved).not.toContainText(`Saved "${offered}"`);
 	const third = /Saved "([^"]+)"/.exec((await saved.textContent())!)![1];
 	expect(third.split('-')).toHaveLength(3);
 	expect(new Set([first, offered, third]).size).toBe(3);

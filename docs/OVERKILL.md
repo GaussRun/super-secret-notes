@@ -140,8 +140,9 @@ CLI draws from its hosts not known to fail, directory finds included. Host lists
 Settings replace the draw there.
 
 The recovery record does not depend on the draw: it always goes to the fixed, well-known
-`DISCOVERY_RELAYS` (`overkill/cli/src/bootstrap.js`: nos.lol, nostr.mom, purplerelay.com, nostr.oxtr.dev;
-only ever add to that list), besides the vault's own relays, and `recover --name` and /recover/ ask the
+`DISCOVERY_RELAYS` (`overkill/cli/src/bootstrap.js`: nos.lol, nostr.mom, purplerelay.com, nostr.oxtr.dev,
+and since format history 17 also nostr.data.haus, relay.nostr.wirednet.jp, nostr-01.yakihonne.com,
+relay.illuminodes.com; only ever add to that list), besides the vault's own relays, and `recover --name` and /recover/ ask the
 fixed set. Old vaults (made with the fixed defaults) keep working unchanged. Blossom servers are not a default (since 2026-09-30): they add no encryption of their
 own. They stay available as an opt-in (`init --advanced`, `hosts add`), and vaults that already have
 Blossom backends keep using them unchanged.
@@ -335,7 +336,8 @@ Additions and clarifications made after the first version of the format. Both cl
    below the secp256k1 order, the salt becomes `"overkill v1 discovery 1:" || NFC(vault_name)`,
    then `"overkill v1 discovery 2:" || NFC(vault_name)`, and so on. Under that key, d tags `overkill-discovery/vault.age` and
    `overkill-discovery/bootstrap.json`, event format as in item 6 (fixed root, independent of the
-   vault's root folder). Vectors: `discovery` in `overkill/cli/test/vectors.json`.
+   vault's root folder). Vectors: `discovery` in `overkill/cli/test/vectors.json`. The d tags are
+   per vault since item 17; the fixed ones above are only read, for older records.
 8. **Bootstrap record and when it is published** (CLI wiring of item 7). Shape:
    `{"v":1,"name","root","main_npub","backends":[...],"others":[{"name","type"}],"cryptpad":[{"instance","username"}]}`.
    `backends` holds only configs that need no login of their own: PrivateBin (url, plus the
@@ -448,6 +450,33 @@ Additions and clarifications made after the first version of the format. Both cl
       Entries without these fields (older clients) make every differing copy DIVERGED.
     - Merge is unchanged: the winning entry is taken whole, fields included. After two devices
       wrote different versions concurrently, the losing version's copies are DIVERGED, not STALE.
+
+17. **Per-vault d tags for the recovery record** (both clients; supersedes the d tags of item 7).
+    - `tag(path) = hex(HKDF-SHA256(ikm = discovery secret (item 7), salt = empty,
+      info = "overkill v1 discovery tag:" || path, L = 32))`, lowercase, for `path` = `vault.age`
+      and `bootstrap.json`. The events are as before (kind 30078, NIP-44 to self, chunks at
+      `<tag>#i/n`); only the d tag changes. Vectors: `discovery_tags` in
+      `overkill/cli/test/vectors.json` (for every `discovery` case).
+    - Why: under the shared tags `overkill-discovery/...`, one query per relay
+      (`{"kinds":[30078],"#d":["overkill-discovery/bootstrap.json"]}`) listed every vault's record
+      and author. Each author pubkey is a check value for offline guessing: guess a vault name and
+      passphrase, run the scrypt, compare the pubkey against the whole harvested set at once.
+    - What it does not change: querying by author still works, but the author pubkey comes from
+      the discovery key, which needs the vault name and passphrase. A relay-wide dump of all kind
+      30078 events can still pick candidate pubkeys by shape (two events with 64-hex d tags, one
+      vault.age sized); hiding the tags removes the one-query harvest, not that. What protects a
+      vault against guessing stays the passphrase (generated: 77 bits) with scrypt N=2^18 salted
+      by the vault name. The content stays NIP-44 under the discovery key, so a harvester never
+      gets vault.age itself.
+    - Writers publish under the new tags only. Readers ask for the new tags first and, only when
+      no relay has a record there, the old fixed tags; a record found only under the old tags is
+      published again under the new ones at once (recover by name, CLI and web). The old events
+      are not deleted (relays may not honour deletes, and an older client may still need them);
+      they age out with the relays' retention.
+    - Publish stamps carry `"tags": 2`; a stamp without it is due, so the next put, repair or
+      refresh moves a vault's record to the new tags. `refresh` (CLI) and repair/refresh (web)
+      also ask the discovery relays and republish when one that answers lacks the record or
+      holds one older than 30 days.
 
 Clarifications (no format change):
 

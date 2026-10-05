@@ -21,6 +21,8 @@ backup somewhere offline, and open the vault now and then so Check can repair wh
 | A host deletes an account or closes | Its copies are gone (for example a CryptPad account after long inactivity, or a volunteer instance shutting down). | One operator per host, many hosts per vault; Check and Repair restore copies elsewhere; setup and the command line tool's repair swap a dead host for a known-good one of the same type. | Covered by redundancy and regular checks. |
 
 Notes:
+- Recovery by name needs this version of the web app or command line tool, or newer: the recovery
+  record is now published under tags of its own for each vault, which older versions do not look for.
 - The two encryption layers (age, then AES-256-GCM) run on your device; hosts add their own layer
   on top. None of the measures above weakens that: the vault link holds only the name, the
   calendar reminder holds only the vault link, and the backup file holds only encrypted blobs.

@@ -7,7 +7,7 @@ import { fallbackPicker } from '$cli/fallbacks.js';
 import { makeBackup, openBackup } from '$cli/backup.js';
 import { readLocalCopy, writeLocalCopy, localCopyBackend, type LocalFiles } from './localcopy';
 import * as bootstrap from '$cli/bootstrap.js';
-import { bootstrapRecord, recordHash, publishDue, configFromBootstrap } from '$cli/discovery-core.js';
+import { bootstrapRecord, recordHash, publishDue, auditDue, configFromBootstrap, DISCOVERY_TAGS_VERSION } from '$cli/discovery-core.js';
 import { SecretStoreCore, migrateConfig, SECRETS_ID } from '$cli/vaultsecrets-core.js';
 import { recoveryKit } from '$cli/kit.js';
 import { ledgerStatus } from '$cli/status.js';
@@ -35,7 +35,7 @@ export interface VaultCfg {
 interface WebConfig {
 	v: 1;
 	cfg: VaultCfg;
-	published: { sha256: string; at: string } | null;
+	published: { sha256: string; at: string; tags?: number } | null;
 	/** when the last full check (every copy on every host) ran from this browser */
 	checkedAt?: string | null;
 }
@@ -366,21 +366,28 @@ class VaultState {
 		return plainText(this.cfg!.name!, this.#pass!);
 	}
 
-	/** Keep the recovery-by-name record current (CLI rule: when it changed, or every 30 days). */
-	async publishDiscovery({ force = false } = {}) {
+	/**
+	 * Keep the recovery-by-name record current (CLI rule: when it changed, or every 30 days); with
+	 * `audit` (repair, refresh) also when a discovery relay lost it or holds an old one.
+	 */
+	async publishDiscovery({ force = false, audit = false } = {}) {
 		const hosts = loadHosts();
 		const conf = this.#conf!;
 		if (!conf.cfg.name || !hosts.discovery.length) return null;
 		const store = this.store;
 		const record = await bootstrapRecord(conf.cfg, store.backends, this.#keys, { travelsWithSecrets: (t: string) => TRAVELS_WITH_SECRETS.has(t) });
 		const hash = await recordHash(record, this.#vaultBytes!);
-		if (!force && !publishDue(conf.published, hash)) return null;
+		if (!force && !publishDue(conf.published, hash) && !audit) return null;
 		try {
 			this.#discoverySecret ??= await step('deriving the discovery key (scrypt, a few seconds)', async () => (await bootstrap.discoveryIdentity(this.#pass!, conf.cfg.name!)).secret);
+			if (!force && !publishDue(conf.published, hash)) {
+				const seen = await step(`asking ${hosts.discovery.length} discovery relays for the recovery record`, () => bootstrap.auditBootstrap(this.#discoverySecret!, hosts.discovery, { pause: hosts.nostrPauseMs }), (a) => `recovery record on ${a.filter((x) => x.at).length}/${a.length} relays`);
+				if (!auditDue(seen)) return null;
+			}
 			// the fixed discovery relays (where recovery by name looks), and the vault's own relays as well
 			const relays = [...new Set([...hosts.discovery, ...conf.cfg.backends.filter((b) => b.type === 'nostr').map((b) => String(b.url).replace(/\/+$/, ''))])];
 			const results = await step(`publishing the recovery-by-name record to ${relays.length} relays`, () => bootstrap.publishBootstrap(this.#pass!, conf.cfg.name!, this.#vaultBytes!, record, { relays, secret: this.#discoverySecret ?? undefined, pause: hosts.nostrPauseMs }), (r) => `recovery by name: record on ${r.filter((x: { ok: boolean }) => x.ok).length}/${r.length} relays`);
-			conf.published = { sha256: hash, at: new Date().toISOString() };
+			conf.published = { sha256: hash, at: new Date().toISOString(), tags: DISCOVERY_TAGS_VERSION };
 			await this.#saveConfig();
 			return results;
 		} catch (err) {
@@ -494,14 +501,14 @@ class VaultState {
 
 	async repair(report: Awaited<ReturnType<Overkill['check']>>) {
 		const r = await step('re-uploading missing, corrupt or stale copies', () => this.store.repair(report), (x) => `${x.fixed.length} repaired, ${x.failed.length} failed`);
-		await this.publishDiscovery();
+		await this.publishDiscovery({ audit: true });
 		return r;
 	}
 
 	/** Republish copies that are missing or due within `days` (the CLI's `refresh`; Nostr and Blossom copies by our 120-day assumption). */
 	async refresh(report: Awaited<ReturnType<Overkill['check']>>, days = 90) {
 		const r = await step(`republishing copies due within ${days} days`, () => this.store.refresh({ days, report }), (x) => `${x.fixed.length} republished, ${x.failed.length} failed`);
-		await this.publishDiscovery();
+		await this.publishDiscovery({ audit: true });
 		return r;
 	}
 

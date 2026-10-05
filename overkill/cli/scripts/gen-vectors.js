@@ -85,6 +85,11 @@ for (const x of discoveryCases) {
   const id = identity(secret)
   discovery.cases.push({ ...x, salt: `overkill v1 discovery:${x.vault_name.normalize('NFC')}`, secret_hex: c.toHex(secret), nsec: nsecEncode(secret), pubkey_hex: id.pubkey, npub: id.npub })
 }
+const discoveryTags = {
+  note: 'd tags of the recovery record: HKDF-SHA256(ikm = discovery secret (the discovery cases), salt = empty, info = "overkill v1 discovery tag:" || path, 32 bytes) as lowercase hex, for path vault.age and bootstrap.json',
+  cases: []
+}
+for (const hex of new Set(discovery.cases.map((x) => x.secret_hex))) discoveryTags.cases.push({ secret_hex: hex, ...await c.deriveDiscoveryTags(c.fromHex(hex)) })
 const vectors = {
   description: 'Overkill Notes format v1 test vectors (docs/OVERKILL.md). Hex is lowercase.',
   derivation: {
@@ -126,7 +131,8 @@ const vectors = {
   cryptpad_credentials: await Promise.all(['cryptpad.private.coffee', 'crypt.unredacted.org', 'CryptPad.FR'].map(async (host) => ({
     host, ...await c.deriveCryptpadCredentials(master, host)
   }))),
-  discovery
+  discovery,
+  discovery_tags: discoveryTags
 }
 // sections added by other tools (e.g. "fileverse", tested in test/fileverse.test.js) stay as they are
 for (const [k, v] of Object.entries(prev ?? {})) if (!(k in vectors)) vectors[k] = v

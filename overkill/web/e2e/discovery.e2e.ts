@@ -4,6 +4,8 @@
 import { test, expect, type BrowserContext } from '@playwright/test';
 import { startAllFakes, type Fakes } from './fakes';
 import { url, readNote } from './helpers';
+import { discoveryIdentity } from '../../cli/src/bootstrap.js';
+import { deriveDiscoveryTags } from '../../cli/src/crypto.js';
 
 let fakes: Fakes;
 test.beforeAll(async () => {
@@ -35,7 +37,9 @@ test('a vault whose own relays are disjoint from the discovery relays is found b
 	// the index lives on the vault's relay; the record on the discovery relay (and on the vault's own)
 	expect(dTags(0)).toContain('overkill/index.ovk');
 	expect(dTags(1)).not.toContain('overkill/index.ovk');
-	expect(dTags(1)).toContain('overkill-discovery/bootstrap.json');
+	const tags = await deriveDiscoveryTags((await discoveryIdentity(passphrase, 'disjoint relays')).secret);
+	expect(dTags(1)).toEqual(expect.arrayContaining([tags['vault.age'], tags['bootstrap.json']]));
+	expect(dTags(1).filter((t) => t?.startsWith('overkill-discovery/'))).toEqual([]);
 	await a.close();
 
 	const b = await browser.newContext();
