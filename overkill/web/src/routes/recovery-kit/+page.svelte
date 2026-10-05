@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Locked from '$lib/components/Locked.svelte';
 	import ShareVault from '$lib/components/ShareVault.svelte';
+	import VaultIdentity from '$lib/components/VaultIdentity.svelte';
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { to } from '$lib/link';
 
@@ -22,6 +23,7 @@
 
 <Locked>
 	<h1>Vault access</h1>
+	<VaultIdentity />
 	{#if err}<p class="error-box" role="alert">{err}</p>{/if}
 	<ShareVault />
 	<h2>Recovery kit (print or save)</h2>

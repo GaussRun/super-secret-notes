@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import ShareVault from '$lib/components/ShareVault.svelte';
+	import VaultIdentity from '$lib/components/VaultIdentity.svelte';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { vault, MIN_COPIES } from '$lib/overkill/vault.svelte';
@@ -237,6 +238,7 @@
 	</div>
 
 	<div class="panel save" data-testid="save-step">
+		<VaultIdentity />
 		<h2>Save these in your password manager</h2>
 		<p>They are all you need to get your notes back, on any device. Also keep the kit.</p>
 		<div class="row">

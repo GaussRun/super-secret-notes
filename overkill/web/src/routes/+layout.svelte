@@ -6,6 +6,7 @@
 	import { tick } from 'svelte';
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { to } from '$lib/link';
+	import HealthBanner from '$lib/components/HealthBanner.svelte';
 
 	let { children } = $props();
 	vault.load();
@@ -115,6 +116,7 @@
 </header>
 
 <main class="wrap">
+	<HealthBanner />
 	{#if vault.restored !== null}
 		<p class="warn" data-testid="restored-notice">Making a new vault was interrupted, so this browser went back to the vault it held before{vault.restored ? ` (${vault.restored})` : ''}.</p>
 	{/if}

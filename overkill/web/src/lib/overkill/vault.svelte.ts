@@ -34,6 +34,8 @@ interface WebConfig {
 	v: 1;
 	cfg: VaultCfg;
 	published: { sha256: string; at: string } | null;
+	/** when the last full check (every copy on every host) ran from this browser */
+	checkedAt?: string | null;
 }
 
 // blob_id of config.ovk (a web-only local file, same two-layer format as notes)
@@ -70,6 +72,9 @@ class VaultState {
 	#conf: WebConfig | null = null;
 	#discoverySecret: Uint8Array | null = null;
 	#secrets: SecretStoreCore | null = null;
+
+	/** The last full check of this vault from this browser (or, before the first, when the vault was made). */
+	lastFullCheck = $state<string | null>(null);
 
 	/** Set when load() put back a vault whose replacement was interrupted: its name, for a notice. */
 	restored = $state<string | null>(null);
@@ -152,6 +157,7 @@ class VaultState {
 		this.#pass = passphrase;
 		this.#vaultBytes = vaultBytes;
 		this.cfg = conf.cfg;
+		this.lastFullCheck = conf.checkedAt ?? vault.created ?? null;
 		if (conf.cfg.name && !this.ephemeral) rememberName(conf.cfg.name);
 		this.status = 'unlocked';
 	}
@@ -443,7 +449,14 @@ class VaultState {
 	}
 
 	async check() {
-		return step('downloading and verifying every copy', () => this.store.check());
+		const report = await step('downloading and verifying every copy', () => this.store.check());
+		const conf = this.#conf;
+		if (conf) {
+			conf.checkedAt = new Date().toISOString();
+			this.lastFullCheck = conf.checkedAt;
+			await this.#saveConfig().catch(() => {});
+		}
+		return report;
 	}
 
 	async repair(report: Awaited<ReturnType<Overkill['check']>>) {
