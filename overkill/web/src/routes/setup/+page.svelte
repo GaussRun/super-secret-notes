@@ -2,6 +2,7 @@
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import ShareVault from '$lib/components/ShareVault.svelte';
 	import VaultIdentity from '$lib/components/VaultIdentity.svelte';
+	import BackupButton from '$lib/components/BackupButton.svelte';
 	import PublicComputer from '$lib/components/PublicComputer.svelte';
 	import { activity } from '$lib/overkill/activity.svelte';
 	import { vault, MIN_COPIES } from '$lib/overkill/vault.svelte';
@@ -245,6 +246,7 @@
 			<button type="button" onclick={saveKit} data-testid="download-kit">{kitDownloaded ? 'Download recovery kit again' : 'Download recovery kit'}</button>
 			<button type="button" class="secondary" onclick={copyAccess} data-testid="copy-recovery-link">{accessCopied ? 'Copied' : 'Copy vault link'}</button>
 		</div>
+		<BackupButton />
 		{#if kitDownloaded}<p class="muted small" data-testid="kit-downloaded">The recovery kit went to your downloads. Move it somewhere safe and offline.</p>{/if}
 		<dl>
 			<dt>Vault name</dt>

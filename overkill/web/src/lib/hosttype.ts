@@ -11,7 +11,8 @@ export const TYPE_NAMES: Record<string, string> = {
 	filen: 'Filen',
 	fileverse: 'Fileverse',
 	rclone: 'rclone',
-	local: 'Folder'
+	local: 'Folder',
+	backup: 'Backup in this browser'
 };
 
 export const TYPE_LOGOS: Record<string, string> = { privatebin: 'privatebin.svg', cryptpad: 'cryptpad.svg', nostr: 'nostr.png' };

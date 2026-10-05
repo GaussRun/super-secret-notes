@@ -78,6 +78,47 @@
 		if (a) take(a);
 	}
 
+	// a backup file: no host needed
+	// only opened on request: one passphrase field at a time keeps password managers (and people) on track
+	let showRestore = $state(false);
+	let backupText = $state<string | null>(null);
+	let backupName = $state('');
+	let backupPass = $state('');
+	let restored = $state<{ name: string | null; notes: number } | null>(null);
+	let pushed = $state<{ fixed: string[]; failed: string[] } | null>(null);
+	async function pickBackup(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		err = '';
+		backupText = file ? await file.text() : null;
+		backupName = file?.name ?? '';
+	}
+	async function restoreBackup(e: SubmitEvent) {
+		e.preventDefault();
+		err = '';
+		busy = true;
+		activity.clear();
+		try {
+			restored = await vault.restoreBackup(backupText!, backupPass, { replace: replacing });
+			backupPass = '';
+		} catch (x) {
+			err = (x as Error).message;
+		} finally {
+			busy = false;
+		}
+	}
+	async function pushBack() {
+		busy = true;
+		err = '';
+		activity.clear();
+		try {
+			pushed = await vault.repair(await vault.check());
+		} catch (x) {
+			err = (x as Error).message;
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function recover(e: SubmitEvent) {
 		e.preventDefault();
 		err = '';
@@ -102,7 +143,16 @@
 </script>
 
 <h1>Recover by name + passphrase</h1>
-{#if result}
+{#if restored}
+	<div class="panel" data-testid="restored">
+		<h2 class="ok">Restored {restored.name ? `"${restored.name}"` : 'the vault'} from the backup: {restored.notes} {restored.notes === 1 ? 'note' : 'notes'}.</h2>
+		<p>They read from this browser right away, with no host needed. Copy everything back to the hosts when they are reachable.</p>
+		<button onclick={pushBack} disabled={busy} data-testid="push-back">{busy ? 'Copying...' : 'Copy everything back to the hosts'}</button>
+		{#if pushed}<p class="small" data-testid="pushed">{pushed.fixed.length} copies restored on the hosts{pushed.failed.length ? `, ${pushed.failed.length} could not be (hosts unreachable; try again later)` : ''}.</p>{/if}
+		<a class="button secondary" href={to('/notes/')}>My notes</a>
+		{#if err}<p class="error-box" role="alert">{err}</p>{/if}
+	</div>
+{:else if result}
 	<div class="panel" data-testid="recovered">
 		<h2 class="ok">Found it on {result.from}.</h2>
 		<p>This browser now knows {result.names.length} hosts: <span class="id">{result.names.join(', ')}</span></p>
@@ -139,10 +189,25 @@
 		<button type="submit" disabled={busy || !name.trim() || !passphrase}>{busy ? 'Searching the relays...' : 'Recover'}</button>
 		<p class="muted small">Asks: <span class="id">{hosts.discovery.join(', ')}</span></p>
 	</form>
+
+	{#if !showRestore}
+		<p><button type="button" class="link" onclick={() => (showRestore = true)} data-testid="show-restore">Restore from a backup file instead</button></p>
+	{:else}
+	<form class="panel" method="post" action="#" onsubmit={restoreBackup} data-testid="restore-form">
+		<h2>Restore from a backup file</h2>
+		<p class="muted small">The file from "Download full backup". It needs no host at all: everything comes from the file, and you can copy it back to the hosts afterwards.</p>
+		<label for="backup-file">Backup file</label>
+		<input id="backup-file" type="file" accept=".json,application/json" onchange={pickBackup} />
+		<label for="backup-pass">Passphrase</label>
+		<input id="backup-pass" name="password" type="password" autocomplete="current-password" bind:value={backupPass} />
+		<button type="submit" class="secondary" disabled={busy || !backupText || !backupPass}>{busy ? 'Opening the backup...' : 'Restore'}</button>
+	</form>
+	{/if}
 {/if}
 
 <ActivityLog title="Recovery log" />
 
 <style>
+	button.link { background: none; border: 0; color: var(--cyan); text-decoration: underline; padding: 0; font-weight: 400; }
 	.small { font-size: 0.85rem; }
 </style>

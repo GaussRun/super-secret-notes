@@ -58,6 +58,27 @@ Plaintext JSON, encrypted as a blob with `blob_id = "index"`:
 - `ls`: list names from merged index.
 - `check`: download every copy from every backend, verify, report e.g. `mega OK, proton OK (2/2 healthy)`; flag missing or corrupt copies.
 - `repair` (nice to have): re-upload missing/corrupt copies from a healthy one.
+- `backup -o <file>`: the full backup file (below). `restore <file>`: a vault from it, with no host needed.
+
+### Backup file
+One JSON document (UTF-8), made by `backup -o <file>` (CLI) or "Download full backup" (web):
+```json
+{"format":"super-secret-notes-backup","v":1,"created":"<ISO 8601>","vault_name":"<name or null>",
+ "root":"<root folder or null>","config":"<base64>","notes":2,
+ "files":{"vault.age":"<base64>","index.ovk":"<base64>","notes/<blob_id>.ovk":"<base64>"}}
+```
+- `files` holds the blobs exactly as the format above defines them, before any host's own layer:
+  `vault.age` as is, the index and every note as two-layer blobs (`"OVK1" || nonce || AES-256-GCM(...)`
+  around the age ciphertext) under their usual blob ids. Each note is read from its first healthy copy and
+  encrypted again for the file; copies the index does not know (DIVERGED) are not included.
+- `config` is the vault config (which backends hold the copies) as a two-layer blob with blob id
+  `backup-config`. The format header, `vault_name`, `root`, `created` and the note count are the only
+  plaintext.
+- Restoring needs the passphrase (it opens `vault.age`); every note is checked against the index's sha256
+  before anything is written. The restored blobs become a local copy (a `local` backend named `backup-copy`
+  in the CLI; "Backup in this browser" in the web app), read first and needing no host; `repair` (CLI) or
+  "Copy everything back to the hosts" (web) then fills the hosts from it.
+- Readers refuse a `format` they do not know and a `v` newer than theirs.
 
 ## Backends
 - Account-based: MEGA (`megajs`), Proton Drive (through the Proton CLI or rclone), Filen, Fileverse.
@@ -129,7 +150,7 @@ Second priority, opt-in: Proton Drive, MEGA, Filen (need a manual signup with em
 One-command goal: `super-secret-notes put <name> [file]` on a fresh machine creates the vault if there is none,
 provisions the default backends, uploads, and prints the recovery kit. No config file editing.
 
-### Failure handling (user rule, 2026-09-30; CLI and web: init/setup, put, repair)
+### Failure handling (CLI and web: init/setup, put, repair)
 - Best effort, never all-or-nothing: every host is tried in parallel, each call with its own
   deadline (CLI 120 s; web 20 s, CryptPad 45 s for its first-use registration, Nostr 60 s for
   chunked notes). A host that fails or times out is marked FAILED in the log and the health

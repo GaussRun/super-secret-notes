@@ -10,7 +10,9 @@ export const FILES = {
 	vault: 'vault.age',
 	config: 'config.ovk',
 	indexCache: 'index-cache.ovk',
-	secrets: 'secrets.ovk'
+	secrets: 'secrets.ovk',
+	/** a restored backup's blobs, kept as a local copy (localcopy.ts) */
+	localCopy: 'backup-copy.json'
 } as const;
 
 // Public-computer mode: the same files, kept in this tab's memory only. Nothing reaches

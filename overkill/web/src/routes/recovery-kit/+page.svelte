@@ -2,6 +2,7 @@
 	import Locked from '$lib/components/Locked.svelte';
 	import ShareVault from '$lib/components/ShareVault.svelte';
 	import VaultIdentity from '$lib/components/VaultIdentity.svelte';
+	import BackupButton from '$lib/components/BackupButton.svelte';
 	import { vault } from '$lib/overkill/vault.svelte';
 	import { to } from '$lib/link';
 
@@ -26,6 +27,8 @@
 	<VaultIdentity />
 	{#if err}<p class="error-box" role="alert">{err}</p>{/if}
 	<ShareVault />
+	<h2>Full backup</h2>
+	<BackupButton />
 	<h2>Recovery kit (print or save)</h2>
 	<p class="muted">The same sheet the CLI prints. It holds your keys: print it, or save it somewhere offline, then close this page. <code>super-secret-notes recover --kit &lt;file&gt;</code> reads it back.</p>
 	{#if kit}

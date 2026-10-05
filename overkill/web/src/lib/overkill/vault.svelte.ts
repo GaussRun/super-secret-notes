@@ -4,6 +4,8 @@
 import * as c from '$cli/crypto.js';
 import { Overkill, MIN_COPIES } from '$cli/store.js';
 import { fallbackPicker } from '$cli/fallbacks.js';
+import { makeBackup, openBackup } from '$cli/backup.js';
+import { readLocalCopy, writeLocalCopy, localCopyBackend, type LocalFiles } from './localcopy';
 import * as bootstrap from '$cli/bootstrap.js';
 import { bootstrapRecord, recordHash, publishDue, configFromBootstrap } from '$cli/discovery-core.js';
 import { SecretStoreCore, migrateConfig, SECRETS_ID } from '$cli/vaultsecrets-core.js';
@@ -72,6 +74,7 @@ class VaultState {
 	#conf: WebConfig | null = null;
 	#discoverySecret: Uint8Array | null = null;
 	#secrets: SecretStoreCore | null = null;
+	#localCopy: LocalFiles | null = null;
 
 	/** The last full check of this vault from this browser (or, before the first, when the vault was made). */
 	lastFullCheck = $state<string | null>(null);
@@ -152,6 +155,7 @@ class VaultState {
 			await this.#saveConfig();
 		}
 		this.#secrets = secrets;
+		this.#localCopy = await readLocalCopy().catch(() => null);
 		this.#store = this.#makeStore(conf.cfg, keys, vaultBytes);
 		this.#vault = vault;
 		this.#pass = passphrase;
@@ -165,6 +169,8 @@ class VaultState {
 	#makeStore(cfg: VaultCfg, keys: Keys, vaultBytes: Uint8Array) {
 		const hosts = loadHosts();
 		const backends = makeBackends(cfg, this.#secrets!, { nostrPauseMs: hosts.nostrPauseMs, timeouts: hosts.timeouts });
+		// a restored backup in this browser: read first (instant, no host needed)
+		if (this.#localCopy) backends.unshift(localCopyBackend(this.#localCopy));
 		if (!backends.length) throw new Error('none of this vault\'s backends works from a browser (PrivateBin, CryptPad, Nostr and Blossom do); use the CLI');
 		return new Overkill({ backends, keys, vaultBytes, logger, indexCache: blobIo(FILES.indexCache), indexSync: cfg.index_sync ?? 'always', hostTimeoutMs: hosts.timeouts.host });
 	}
@@ -409,6 +415,33 @@ class VaultState {
 		return this.backends.map((b) => {
 			const h = health[b.name];
 			return { name: b.name, type: b.type, where: b.where, status: h?.status ?? 'unknown', lastOk: h?.last_ok ?? null, lastChecked: h?.last_checked ?? null };
+		});
+	}
+
+	/** The full backup file: vault.age, the index and every note, all still encrypted (cli/src/backup.js). */
+	async backupFile() {
+		return step('reading every note for the backup', () => makeBackup({ store: this.store, cfg: this.cfg, keys: this.#keys, vaultBytes: this.#vaultBytes! }), () => 'backup ready');
+	}
+
+	/**
+	 * A vault from a backup file and its passphrase, with no host needed: its blobs become this
+	 * browser's local copy (read first), and Repair copies them back to the hosts.
+	 */
+	async restoreBackup(text: string, passphrase: string, { replace = false } = {}) {
+		return this.#taking({ replace, ephemeral: false }, async () => {
+			const b = await step('opening the backup (scrypt, a few seconds)', () => openBackup(text, passphrase), (x) => `${Object.keys(x.index.notes).length} notes, all verified`);
+			await clearAll();
+			await writeBlob(FILES.vault, b.vaultBytes);
+			const files: LocalFiles = {};
+			for (const [rel, bytes] of Object.entries(b.files)) files[rel] = c.toBase64(bytes as Uint8Array);
+			await writeLocalCopy(files);
+			await writeBlob(FILES.indexCache, await c.encryptIndex(b.keys, b.index));
+			const conf: WebConfig = { v: 1, cfg: { v: 1, ...b.cfg, backends: b.cfg.backends ?? [] } as VaultCfg, published: null };
+			this.#keys = b.keys;
+			this.#conf = conf;
+			await this.#saveConfig();
+			await this.#open({ vault: b.vault, keys: b.keys, passphrase, vaultBytes: b.vaultBytes, conf });
+			return { name: conf.cfg.name ?? null, notes: Object.keys(b.index.notes).length };
 		});
 	}
 

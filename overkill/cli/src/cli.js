@@ -11,6 +11,8 @@ import { generatePassphrase, isStrongEnough, estimateBits, MIN_BITS, generateVau
 import { defaultBackends, validVaultName } from './defaults.js'
 import { recover } from './recover.js'
 import { parseKit, recoveryKit } from './kit.js'
+import { makeBackup, openBackup } from './backup.js'
+import path from 'node:path'
 import { SecretStore, migrateConfig } from './vaultsecrets.js'
 import { publishIfNeeded } from './discovery.js'
 import { ledgerStatus, ago, retention } from './status.js'
@@ -523,6 +525,39 @@ export function buildCli () {
         logger.warn(`this vault keeps its index locally (index_sync ${cfg.index_sync}): what came back is the index as of its last sync. Notes written after that are not listed; \`super-secret-notes get <exact name>\` still finds them.`)
       }
       out('Next: `super-secret-notes ls`, and `super-secret-notes check` to see every copy.')
+    })
+
+  program.command('backup')
+    .description('write a full backup: vault.age, the index and every note, all still encrypted, in one file')
+    .requiredOption('-o, --output <file>', 'where to write it (- for stdout)')
+    .action(async (o) => {
+      await withStore(program.opts(), async (store, { cfg, vault, vaultBytes }) => {
+        const text = await makeBackup({ store, cfg, keys: await c.unlockKeys(vault), vaultBytes })
+        if (o.output === '-') return void process.stdout.write(text)
+        await writePrivate(o.output, text)
+        out(`Backup written to ${o.output} (${JSON.parse(text).notes} notes). It opens only with your passphrase; keep it somewhere safe and offline.`)
+      })
+    })
+
+  program.command('restore <file>')
+    .description('rebuild a vault on this machine from a backup file, with no host needed; `repair` then copies it back to the hosts')
+    .action(async (file) => {
+      const home = homeDir(program.opts().home)
+      if (await vaultExists(home)) throw new Error(`already initialized: ${files(home).config}`)
+      const text = await readFile(file, 'utf8')
+      const pass = await passphrase()
+      const { keys, vaultBytes, cfg, index, files: blobs } = await openBackup(text, pass)
+      // the backup's blobs become a folder backend of this machine: readable now, and the source for `repair`
+      const copy = { name: 'backup-copy', type: 'local', path: path.join(home, 'backup-copy') }
+      cfg.backends = [...(cfg.backends ?? []).filter((b) => b.name !== copy.name), copy]
+      cfg.root ??= DEFAULT_ROOT
+      const local = createBackend(copy, { root: cfg.root, home })
+      for (const [rel, bytes] of Object.entries(blobs)) await local.put(rel, bytes)
+      await writePrivate(files(home).vault, vaultBytes)
+      await writePrivate(files(home).config, JSON.stringify(cfg, null, 2) + '\n')
+      await indexCache(home).write(await c.encryptIndex(keys, index))
+      out(`Restored${cfg.name ? ` "${cfg.name}"` : ''} with ${Object.keys(index.notes).length} notes; they read from ${copy.path} right away.`)
+      out('Run `super-secret-notes repair` to copy everything back to the hosts.')
     })
 
   program.command('kit')
