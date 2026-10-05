@@ -38,7 +38,25 @@ async function step(name: string, fn: () => Promise<string | void>) {
 }
 
 /** Everything a context requests, to prove no URL ever carries the passphrase or the access fragment. */
+// OVERKILL_SITE_FAKES=1: the in-process fake hosts instead of the real ones (to check this suite
+// itself against a local test build without making real accounts)
+let fakeHosts: string | null = null;
+test.beforeAll(async () => {
+	if (process.env.OVERKILL_SITE_FAKES !== '1') return;
+	const { startAllFakes } = await import('../e2e/fakes');
+	const fakes = await startAllFakes();
+	fakeHosts = JSON.stringify(fakes.hosts);
+});
+
 function watch(ctx: BrowserContext, requests: string[], problems: string[]) {
+	if (fakeHosts)
+		void ctx.addInitScript((h) => {
+			try {
+				localStorage.setItem('overkill.hosts', h);
+			} catch {
+				// about:blank has no storage
+			}
+		}, fakeHosts);
 	ctx.on('request', (r) => requests.push(r.url()));
 	ctx.on('page', (p) => {
 		p.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
@@ -197,6 +215,73 @@ test('the deployed site end to end with the real hosts', async ({ browser }: { b
 			await p.getByTestId('notes-table').getByRole('link', { name: noteName, exact: true }).click();
 			await expect(p.getByTestId('note-text')).toHaveValue(edited, { timeout: LONG });
 			return 'recovered in one click and read the edit';
+		} finally {
+			await fresh.close();
+		}
+	});
+
+	await step('6b "Copy vault link" (no passphrase): a fresh browser opens it, types the passphrase, recovers', async () => {
+		await menu(page, 'Vault access');
+		await page.getByTestId('copy-vault-link').click();
+		const vaultLink = await page.evaluate(() => navigator.clipboard.readText());
+		expect(vaultLink).toBe(u(`/recover/#v=${encodeURIComponent(vaultName)}`));
+		expect(vaultLink.includes('p=')).toBe(false);
+		const fresh = await browser.newContext();
+		watch(fresh, requests, problems);
+		const p = await fresh.newPage();
+		try {
+			await p.goto(vaultLink);
+			await expect(p.getByTestId('vault-link-ready')).toContainText(`Recover ${vaultName}`);
+			const pass = p.getByTestId('recover-form').getByLabel('Passphrase', { exact: true });
+			await expect(pass).toBeFocused();
+			await pass.fill(passphrase);
+			await p.getByTestId('recover-form').getByRole('button', { name: 'Recover' }).click();
+			await expect(p.getByTestId('recovered')).toBeVisible({ timeout: LONG });
+			await menu(p, 'My notes');
+			await p.getByTestId('notes-table').getByRole('link', { name: noteName, exact: true }).click();
+			await expect(p.getByTestId('note-text')).toHaveValue(edited, { timeout: LONG });
+			return 'recovered from the vault link plus the typed passphrase';
+		} finally {
+			await fresh.close();
+		}
+	});
+
+	await step('6c full backup: downloaded, then restored in a fresh browser with every host blocked, the note read', async () => {
+		await menu(page, 'Vault access');
+		const downloading = page.waitForEvent('download', { timeout: LONG });
+		await page.getByTestId('download-backup').click();
+		const download = await downloading;
+		const backup = await readFile((await download.path())!, 'utf8');
+		expect(JSON.parse(backup).format).toBe('super-secret-notes-backup');
+		expect(backup.includes(edited)).toBe(false);
+		const fresh = await browser.newContext();
+		// refused requests are logged as console errors here on purpose; page errors still count
+		const blockedProblems: string[] = [];
+		watch(fresh, requests, blockedProblems);
+		// nothing but the site itself: every host request and every relay socket is refused
+		const siteOrigin = new URL(SITE).origin;
+		let blocked = 0;
+		await fresh.route('**/*', (r) => (new URL(r.request().url()).origin === siteOrigin ? r.continue() : (blocked++, r.abort())));
+		await fresh.routeWebSocket(/.*/, (ws) => {
+			blocked++;
+			ws.close();
+		});
+		const p = await fresh.newPage();
+		try {
+			await p.goto(u('/recover/'));
+			await p.getByTestId('show-restore').click();
+			const form = p.getByTestId('restore-form');
+			await form.getByLabel('Backup file').setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/json', buffer: Buffer.from(backup) });
+			await form.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+			await form.getByRole('button', { name: 'Restore' }).click();
+			await expect(p.getByTestId('restored')).toBeVisible({ timeout: LONG });
+			await menu(p, 'My notes');
+			await p.getByTestId('notes-table').getByRole('link', { name: noteName, exact: true }).click();
+			await expect(p.getByTestId('note-text')).toHaveValue(edited, { timeout: LONG });
+			await expect(p.getByTestId('note-source')).toContainText('Backup in this browser');
+			const pageErrors = blockedProblems.filter((x) => x.startsWith('page error'));
+			if (pageErrors.length) throw new Error(pageErrors.join(' | '));
+			return `restored and read with every host blocked (${blocked} host requests refused)`;
 		} finally {
 			await fresh.close();
 		}

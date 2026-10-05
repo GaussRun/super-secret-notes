@@ -29,6 +29,9 @@ next one if a copy is missing, damaged, or out of date.
 - Providers see random-looking file names (`notes/<64 hex chars>.ovk`), sizes and
   timestamps. They do not see note names or contents.
 - Deleting notes is not supported yet (format v1).
+- Everything that can go wrong, and what is in place against it:
+  [docs/RISKS.md](../../docs/RISKS.md). Keep the recovery kit or a full backup
+  (`super-secret-notes backup -o <file>`) somewhere offline.
 
 ## Install
 

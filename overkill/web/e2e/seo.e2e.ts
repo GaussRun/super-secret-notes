@@ -135,3 +135,8 @@ test('the site info (author, license, source, trust model) is on the landing pag
 		await expect(page.locator('body')).not.toContainText('whoever serves it could change it');
 	}
 });
+
+test('/how-it-works/ links the risk list', async ({ page }) => {
+	await page.goto(url('/how-it-works/'));
+	await expect(page.getByTestId('risks-link').getByRole('link', { name: 'the risk list' })).toHaveAttribute('href', 'https://github.com/GaussRun/super-secret-notes/blob/main/docs/RISKS.md');
+});

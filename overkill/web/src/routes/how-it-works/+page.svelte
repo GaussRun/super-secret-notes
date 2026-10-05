@@ -31,6 +31,7 @@
 		<li data-testid="failure-handling">Every host is tried on its own with a deadline: one that fails or does not answer is marked failed and retried later, a default that fails at setup gets a known-good stand-in, and a note counts as stored once 2 hosts hold it.</li>
 		<li>Reading takes the first copy that passes every check and falls back to the next one if a copy is missing, damaged or out of date.</li>
 		<li>An encrypted index lists your notes, where each copy lives and when each was last verified (the health ledger). <a href={to('/check/')}>Check</a> downloads and verifies every copy; Repair re-uploads broken ones from a healthy copy.</li>
+		<li data-testid="risks-link">What can go wrong (a lost passphrase, a forgotten vault name, hosts that drop data, the site moving) and what is in place against each: <a href="https://github.com/GaussRun/super-secret-notes/blob/main/docs/RISKS.md" rel="noopener">the risk list</a>. In short: keep the recovery kit or a full backup offline, and open the vault now and then so Check can repair what free hosts drop.</li>
 		<li>Free hosts promise little: PrivateBin keeps pastes with "never" expiry, but Nostr relays (and Blossom servers, if you add them) promise no retention, so we treat their copies as possibly gone 120 days after publishing and republish them (our policy, not theirs).</li>
 	</ul>
 </div>

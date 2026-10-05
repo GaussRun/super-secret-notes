@@ -39,6 +39,7 @@ runs in a Web Worker so the page keeps responding.
 - Keys, the passphrase and plaintext live in the tab's memory only; a reload locks the vault. The
   browser keeps only encrypted files (IndexedDB: `vault.age`, `config.ovk`, `index-cache.ovk`,
   `secrets.ovk`). Host lists for new vaults (not secret) sit in `localStorage`.
+- What can go wrong and what is in place against it: [docs/RISKS.md](../../docs/RISKS.md).
 
 ## Run it
 
